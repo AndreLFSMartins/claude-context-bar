@@ -29,9 +29,15 @@ tsconfig.json
 
 # Internal documentation (README.md and CHANGELOG.md are for the marketplace)
 CLAUDE.md
+AGENTS.md
 DEV-README.md
 INTERNAL-DEV-NOTES.md
+INSTRUCTIONS.md
+SESSION_LOG.md
 whats-next.md
+docs/
+.council/
+.cursor/
 
 # Generated knowledge graph
 graphify-out/
