@@ -7,6 +7,7 @@ import { getContextLimitForModel } from './contextLimit';
 import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
 import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
+import { buildItemLabel } from './tabLabel';
 
 interface SessionInfo {
     projectName: string;
@@ -14,6 +15,7 @@ interface SessionInfo {
     sessionId: string;
     fullSessionId: string;
     entrypoint: string;
+    lastPrompt: string;
     sessionFile: string;
     inputTokens: number;
     cacheReadTokens: number;
@@ -214,6 +216,7 @@ interface TokenUsage {
     sessionCreated: Date | null;
     wasCleared: boolean;  // True if session ended with /clear command
     entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
+    lastPrompt: string;   // Latest user prompt — the text the Claude Code tab titles itself with
 }
 
 // Fuzzy emoji matching based on project name
@@ -332,7 +335,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
         try {
             const stats = fs.statSync(jsonlPath);
             if (stats.size === 0) {
-                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '' });
+                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '' });
                 return;
             }
 
@@ -381,6 +384,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
             let sessionCreated: Date | null = null;
             let model = '';
             let entrypoint = '';
+            let lastPrompt = '';
             let finalUsage ={ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
 
             // Forward pass from start index to find metadata and latest usage
@@ -399,6 +403,12 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // line, so the pass that starts after the last /clear still sees it.
                     if (!entrypoint && typeof entry.entrypoint === 'string') {
                         entrypoint = entry.entrypoint;
+                    }
+
+                    // Latest prompt wins: the Claude Code tab retitles itself on
+                    // every message, so the last one is what the tab is showing.
+                    if (entry.type === 'last-prompt' && typeof entry.lastPrompt === 'string') {
+                        lastPrompt = entry.lastPrompt;
                     }
 
                     // Look for first user message (for display)
@@ -442,11 +452,12 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                 firstMessage: firstMessage ? firstMessage + '...' : '',
                 sessionCreated,
                 wasCleared,
-                entrypoint
+                entrypoint,
+                lastPrompt
             });
 
         } catch (e) {
-            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '' });
+            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '' });
         }
     });
 }
@@ -528,6 +539,7 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                         sessionId,
                         fullSessionId,
                         entrypoint: usage.entrypoint,
+                        lastPrompt: usage.lastPrompt,
                         sessionFile: file.path,
                         inputTokens: usage.inputTokens,
                         cacheReadTokens: usage.cacheReadTokens,
@@ -660,6 +672,7 @@ async function refreshAllSessions() {
     const showEmoji = config.get<boolean>('showEmoji', true);
     const compactMode = config.get<boolean>('compactMode', false);
     const shortNames = config.get<Record<string, string>>('shortNames', {});
+    const tabNameLength = config.get<number>('tabNameLength', 6);
 
     // Pastel color palette for auto-coloring
     const pastelPalette = [
@@ -736,7 +749,14 @@ async function refreshAllSessions() {
         // Update the status bar item with fuzzy emoji matching
         const icon = showEmoji ? getEmojiForProject(session.projectName) : '';
         const iconSpace = showEmoji ? ' ' : '';
-        const displayName = compactMode ? getShortName(session.projectName, shortNames) : session.projectName;
+        // The project name only names the project; two tabs of the same one are
+        // told apart by the text their Claude Code tab is titled with.
+        const projectLabel = compactMode ? getShortName(session.projectName, shortNames) : session.projectName;
+        const displayName = buildItemLabel({
+            lastPrompt: session.lastPrompt,
+            fallbackName: projectLabel,
+            length: tabNameLength
+        });
         entry.item.text = `${icon}${iconSpace}${displayName}: ${session.percentage}%`;
 
         // Set background color based on thresholds

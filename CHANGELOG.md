@@ -19,6 +19,16 @@ VS Code marketplace auto-update cannot overwrite these changes.
 - Manual click-to-hide is removed, along with its auto-unhide-on-new-activity behaviour. Automatic
   hiding of idle sessions via `idleTimeout` is unchanged.
 
+- **Status bar items are named after the Claude Code tab, not the project.** Each item now shows the
+  first `tabNameLength` characters (default 6) of the tab's own name. The Claude Code tab titles
+  itself with your latest prompt — verified in VS Code's persisted editor layout
+  (`"providedId":"claudeVSCodePanel","title":"leia o /private/tmp/clau…"`) — and the same text is in
+  the session file as `{"type":"last-prompt"}`. The project name could never tell two tabs of one
+  project apart: its `-2` suffix is positional, assigned by creation order among the *active*
+  sessions, so it slides onto a different session as soon as an older one drops off the bar. Colors
+  and emoji stay tied to the project, and sessions recording no prompt fall back to the project
+  name. Set `tabNameLength` to `0` for the old behaviour.
+
 ### Known limitation
 - **Right after a window reload, clicking an item for a tab you have not visited yet opens a
   duplicate tab instead of revealing the existing one.** VS Code restores webview panels lazily, and

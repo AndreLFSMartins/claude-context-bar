@@ -2,7 +2,7 @@
     "name": "claude-context-bar-fork",
     "displayName": "Claude Context Bar (fork)",
     "description": "Real-time context window usage monitor for Claude Code sessions. Fork: shows only the current window's sessions, hides scheduled tasks, and no longer truncates the list to 5 items silently.",
-    "version": "1.7.1",
+    "version": "1.8.0",
     "publisher": "andremartins",
     "author": {
         "name": "Ed Zisk",
@@ -143,6 +143,12 @@
                     "default": 12,
                     "minimum": 0,
                     "description": "Maximum number of status bar items. Set 0 for no limit. Upstream hardcoded 5 and dropped the rest with no warning; when this cap truncates the list, a warning is logged to the extension host output."
+                },
+                "claudeContextBar.tabNameLength": {
+                    "type": "number",
+                    "default": 6,
+                    "minimum": 0,
+                    "description": "Characters of the Claude Code tab's own name to show on the status bar item, instead of the project name (default: 6). The Claude Code tab titles itself with your latest prompt, so this is what lets you tell two tabs of the same project apart — the project name only ever says which project. Set 0 to show the project name instead. Sessions that record no prompt fall back to the project name automatically; the color and emoji always stay tied to the project."
                 },
                 "claudeContextBar.compactMode": {
                     "type": "boolean",
