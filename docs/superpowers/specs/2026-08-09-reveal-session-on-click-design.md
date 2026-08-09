@@ -47,6 +47,10 @@ createPanel(e, t, r) {
 `executeCommand('claude-vscode.editor.open', sessionId)` reveals the tab when the panel
 lives in this window.
 
+Note that `SessionInfo.sessionId` is **not** that UUID: it is truncated to 8 characters
+for the tooltip. The command needs the full id, so a separate `fullSessionId` field
+carries the untruncated filename stem.
+
 Two consequences drive the design:
 
 1. The command is **private, undocumented API**. It can disappear in any update, so every
