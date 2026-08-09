@@ -6,11 +6,14 @@ import * as readline from 'readline';
 import { getContextLimitForModel } from './contextLimit';
 import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
+import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
 
 interface SessionInfo {
     projectName: string;
     projectPath: string;
     sessionId: string;
+    fullSessionId: string;
+    entrypoint: string;
     sessionFile: string;
     inputTokens: number;
     cacheReadTokens: number;
@@ -31,8 +34,6 @@ interface StatusBarEntry {
 }
 
 const statusBarItems: Map<string, StatusBarEntry> = new Map();
-// Track manually hidden sessions: sessionFile -> timestamp when hidden
-const hiddenSessions: Map<string, number> = new Map();
 let fileWatcher: fs.FSWatcher | null = null;
 let refreshInterval: NodeJS.Timeout | null = null;
 
@@ -48,13 +49,23 @@ const ITEM_CLAUDE_ICON = '✴️';
 export function activate(context: vscode.ExtensionContext) {
     console.log('Claude Context Bar is now active');
 
-    // Register command to hide a session (triggered by clicking status bar item)
-    const hideCommand = vscode.commands.registerCommand('claudeContextBar.hideSession', (sessionFile: string) => {
-        hiddenSessions.set(sessionFile, Date.now());
-        // Immediately refresh to hide the item
-        refreshAllSessions();
-    });
-    context.subscriptions.push(hideCommand);
+    // Clicking a status bar item opens that session's Claude Code tab in this window.
+    // The command it delegates to is private API of the Claude Code extension, so its
+    // presence is checked every time and a missing command degrades to a message.
+    const revealCommand = vscode.commands.registerCommand(
+        'claudeContextBar.revealSession',
+        async (fullSessionId: string, entrypoint: string) => {
+            const available = (await vscode.commands.getCommands(true)).includes(CLAUDE_REVEAL_COMMAND);
+            const action = resolveClickAction({ sessionId: fullSessionId, entrypoint }, available);
+
+            if (action.kind === 'reveal') {
+                await vscode.commands.executeCommand(CLAUDE_REVEAL_COMMAND, action.sessionId);
+            } else {
+                vscode.window.showInformationMessage(action.message);
+            }
+        }
+    );
+    context.subscriptions.push(revealCommand);
 
     // Listen for configuration changes and refresh immediately
     const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
@@ -202,6 +213,7 @@ interface TokenUsage {
     firstMessage: string;
     sessionCreated: Date | null;
     wasCleared: boolean;  // True if session ended with /clear command
+    entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
 }
 
 // Fuzzy emoji matching based on project name
@@ -320,7 +332,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
         try {
             const stats = fs.statSync(jsonlPath);
             if (stats.size === 0) {
-                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false });
+                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '' });
                 return;
             }
 
@@ -368,7 +380,8 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
             let firstMessage = '';
             let sessionCreated: Date | null = null;
             let model = '';
-            let finalUsage = { inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
+            let entrypoint = '';
+            let finalUsage ={ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
 
             // Forward pass from start index to find metadata and latest usage
             for (let i = startIndex; i < lines.length; i++) {
@@ -380,6 +393,12 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // Get session creation timestamp (first valid timestamp after clear)
                     if (!sessionCreated && entry.timestamp) {
                         sessionCreated = new Date(entry.timestamp);
+                    }
+
+                    // Session origin. Present on nearly every user/assistant/attachment
+                    // line, so the pass that starts after the last /clear still sees it.
+                    if (!entrypoint && typeof entry.entrypoint === 'string') {
+                        entrypoint = entry.entrypoint;
                     }
 
                     // Look for first user message (for display)
@@ -422,11 +441,12 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                 model,
                 firstMessage: firstMessage ? firstMessage + '...' : '',
                 sessionCreated,
-                wasCleared
+                wasCleared,
+                entrypoint
             });
 
         } catch (e) {
-            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false });
+            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '' });
         }
     });
 }
@@ -496,14 +516,18 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                     if (!showScheduledTasks && isScheduledTask(usage.firstMessage)) continue;
 
                     const { name, fullPath } = decodeProjectPath(projectDir);
-                    // Extract short session ID from filename
-                    const sessionId = file.name.replace('.jsonl', '').substring(0, 8);
+                    // Extract short session ID from filename (display only — the
+                    // Claude Code command needs the full id, kept separately)
+                    const fullSessionId = file.name.replace('.jsonl', '');
+                    const sessionId = fullSessionId.substring(0, 8);
                     // Auto-detect context limit based on model
                     const sessionContextLimit = getContextLimitForModel(usage.model, contextLimit, modelContextLimits);
                     sessions.push({
                         projectName: name,
                         projectPath: fullPath,
                         sessionId,
+                        fullSessionId,
+                        entrypoint: usage.entrypoint,
                         sessionFile: file.path,
                         inputTokens: usage.inputTokens,
                         cacheReadTokens: usage.cacheReadTokens,
@@ -602,33 +626,18 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // Sort by mtime for display order (most recent first)
     finalSessions.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
 
-    // Filter out manually hidden sessions, but auto-unhide if there's new activity
-    const visibleSessions = finalSessions.filter(session => {
-        const hiddenAt = hiddenSessions.get(session.sessionFile);
-        if (hiddenAt) {
-            // Check if session was modified after it was hidden
-            if (session.lastUpdated.getTime() > hiddenAt) {
-                // New activity! Remove from hidden list
-                hiddenSessions.delete(session.sessionFile);
-                return true; // Show it
-            }
-            return false; // Still hidden
-        }
-        return true; // Not hidden
-    });
-
     // Cap the list, but make the cap visible instead of silently truncating:
     // a dropped session used to vanish with no trace, so a tab sitting at 80%
     // could be invisible. maxItems <= 0 means no cap.
     const maxItems = config.get<number>('maxItems', 12);
-    if (maxItems > 0 && visibleSessions.length > maxItems) {
+    if (maxItems > 0 && finalSessions.length > maxItems) {
         console.warn(
-            `Claude Context Bar: showing ${maxItems} of ${visibleSessions.length} active sessions ` +
+            `Claude Context Bar: showing ${maxItems} of ${finalSessions.length} active sessions ` +
             `(raise claudeContextBar.maxItems to see the rest)`
         );
-        return visibleSessions.slice(0, maxItems);
+        return finalSessions.slice(0, maxItems);
     }
-    return visibleSessions;
+    return finalSessions;
 }
 
 function formatTokens(tokens: number): string {
@@ -755,14 +764,14 @@ async function refreshAllSessions() {
             `| Cache Creation | ${formatTokens(session.cacheCreationTokens)} |\n` +
             `| **Total** | **${formatTokens(session.totalTokens)}** / ${formatTokens(session.contextLimit)} |\n\n` +
             `🕐 Last updated: ${session.lastUpdated.toLocaleTimeString()}\n\n` +
-            `*Click to hide*`
+            `*Click to open this tab*`
         );
 
-        // Click to hide this session
+        // Click to open this session's Claude Code tab
         entry.item.command = {
-            command: 'claudeContextBar.hideSession',
-            title: 'Hide Session',
-            arguments: [session.sessionFile]
+            command: 'claudeContextBar.revealSession',
+            title: 'Open Claude Code Tab',
+            arguments: [session.fullSessionId, session.entrypoint]
         };
 
         entry.item.show();
