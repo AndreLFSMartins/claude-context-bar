@@ -2,6 +2,24 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [Fork] - 2026-08-09
+
+Forked from [edenaion/claude-context-bar](https://github.com/edenaion/claude-context-bar) at 1.6.0.
+Published under a different extension identity (`andremartins.claude-context-bar-fork`) so the
+VS Code marketplace auto-update cannot overwrite these changes.
+
+### Added
+- `onlyCurrentWindow` (default `true`) — show only sessions whose working directory sits inside
+  this window's workspace folders. Comparison happens in Claude's encoded path space, requiring an
+  exact match or a following dash so a sibling directory cannot match by string prefix. A window
+  with no folder open still shows everything.
+- `showScheduledTasks` (default `false`) — hide sessions whose first message is a
+  `<scheduled-task>` block. They are real sessions but not tabs, and each one took a status bar slot.
+- `maxItems` (default `12`, `0` for unlimited) — replaces the hardcoded 5-item cap. When the cap
+  does truncate, it logs a warning to the extension host output instead of dropping sessions
+  silently. The old behaviour could hide a tab sitting at 80% context with no trace.
+- `src/sessionFilter.ts` with 16 unit tests, following the pure-function pattern of `contextLimit.ts`.
+
 ## [1.6.0] - 2026-07-24
 
 ### Added

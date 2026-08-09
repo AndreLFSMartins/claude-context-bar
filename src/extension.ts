@@ -5,6 +5,7 @@ import * as os from 'os';
 import * as readline from 'readline';
 import { getContextLimitForModel } from './contextLimit';
 import { getUsage, UsageData, UsageMeter } from './usage';
+import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
 
 interface SessionInfo {
     projectName: string;
@@ -442,6 +443,14 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     const contextLimit = config.get<number>('contextLimit', 200000);
     const modelContextLimits = config.get<Record<string, number>>('modelContextLimits', {});
     const idleTimeout = config.get<number>('idleTimeout', 180);
+    const onlyCurrentWindow = config.get<boolean>('onlyCurrentWindow', true);
+    const showScheduledTasks = config.get<boolean>('showScheduledTasks', false);
+
+    // Workspace roots of THIS window, in Claude's encoded form. Empty when the
+    // filter is off or the window has no folder open, which keeps every session.
+    const encodedRoots = onlyCurrentWindow
+        ? (vscode.workspace.workspaceFolders ?? []).map(f => encodeProjectPath(f.uri.fsPath))
+        : [];
 
     // Only look at sessions modified within the idle timeout (active sessions)
     // idleTimeout of 0 (or negative) disables the timeout: sessions never go stale
@@ -458,6 +467,9 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
 
             // Skip Claude Memory and plugin directories (background agents, not interactive sessions)
             if (projectDir.includes('claude-plugins') || projectDir.includes('claude-mem')) continue;
+
+            // Skip projects belonging to another window's workspace
+            if (!belongsToWorkspace(projectDir, encodedRoots)) continue;
 
             // Find JSONL files modified within cutoff time
             const files = fs.readdirSync(projectPath)
@@ -479,6 +491,10 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                 const usage = await getLatestTokenCount(file.path);
 
                 if (usage.totalTokens > 0) {
+                    // Scheduled/background runs are sessions but not tabs; they
+                    // otherwise compete with real tabs for status bar slots.
+                    if (!showScheduledTasks && isScheduledTask(usage.firstMessage)) continue;
+
                     const { name, fullPath } = decodeProjectPath(projectDir);
                     // Extract short session ID from filename
                     const sessionId = file.name.replace('.jsonl', '').substring(0, 8);
@@ -601,7 +617,18 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
         return true; // Not hidden
     });
 
-    return visibleSessions.slice(0, 5);
+    // Cap the list, but make the cap visible instead of silently truncating:
+    // a dropped session used to vanish with no trace, so a tab sitting at 80%
+    // could be invisible. maxItems <= 0 means no cap.
+    const maxItems = config.get<number>('maxItems', 12);
+    if (maxItems > 0 && visibleSessions.length > maxItems) {
+        console.warn(
+            `Claude Context Bar: showing ${maxItems} of ${visibleSessions.length} active sessions ` +
+            `(raise claudeContextBar.maxItems to see the rest)`
+        );
+        return visibleSessions.slice(0, maxItems);
+    }
+    return visibleSessions;
 }
 
 function formatTokens(tokens: number): string {
