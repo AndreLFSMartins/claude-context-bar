@@ -37,7 +37,7 @@
 
 🧹 **Smart Session Detection** — Automatically hides "ghost" sessions when you close tabs or run `/clear`
 
-👆 **Click to Hide** — Click any context bar item to temporarily hide it; reappears on new activity
+👆 **Click to Open the Tab** — Click any context bar item to jump to that session's Claude Code tab in the current window. Sessions started outside a VS Code tab (terminal, Claude Desktop) have no tab to open and say so instead.
 
 📐 **Compact Mode** — Shorten project names to save space (my-cool-project → MCP, typescript → Tscript)
 
@@ -69,7 +69,7 @@
 | `claudeContextBar.usageDangerThreshold` | `75` | Usage percentage for red danger (independent of context) |
 | `claudeContextBar.usageRefreshInterval` | `60` | How often (seconds) to refresh subscription usage from the `/usage` endpoint |
 | `claudeContextBar.refreshInterval` | `30` | Refresh interval in seconds |
-| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before hiding a session (3 minutes). Set `0` to never hide idle sessions |
+| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before a session drops off the bar (3 minutes). Set `0` to keep idle sessions forever |
 | `claudeContextBar.compactMode` | `false` | Shorten project names to save status bar space |
 | `claudeContextBar.shortNames` | `{}` | Custom short names for projects (e.g., `{"my-project": "MP"}`) |
 

@@ -126,7 +126,7 @@
                     "default": 180,
                     "minimum": 0,
                     "maximum": 9999999,
-                    "description": "Seconds of inactivity before hiding a session (default: 180 / 3 minutes). Set 0 to never hide idle sessions. Click to manually hide."
+                    "description": "Seconds of inactivity before hiding a session (default: 180 / 3 minutes). Set 0 to never hide idle sessions."
                 },
                 "claudeContextBar.onlyCurrentWindow": {
                     "type": "boolean",

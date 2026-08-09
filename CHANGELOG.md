@@ -8,6 +8,17 @@ Forked from [edenaion/claude-context-bar](https://github.com/edenaion/claude-con
 Published under a different extension identity (`andremartins.claude-context-bar-fork`) so the
 VS Code marketplace auto-update cannot overwrite these changes.
 
+### Changed
+- **Clicking a status bar item now opens that session's Claude Code tab** instead of hiding the
+  item. It delegates to the Claude Code extension's private `claude-vscode.editor.open` command,
+  which reveals the webview panel matching the session id. Two guards keep it safe: the session's
+  `entrypoint` must be `claude-vscode` (terminal, SDK, and Claude Desktop sessions have no tab, and
+  calling the command with an id the extension does not know would create an unwanted tab), and the
+  command must actually be registered. Either guard failing shows a message and opens nothing.
+  Cross-window jumps are out of scope: VS Code exposes no API to focus another window.
+- Manual click-to-hide is removed, along with its auto-unhide-on-new-activity behaviour. Automatic
+  hiding of idle sessions via `idleTimeout` is unchanged.
+
 ### Added
 - `onlyCurrentWindow` (default `true`) — show only sessions whose working directory sits inside
   this window's workspace folders. Comparison happens in Claude's encoded path space, requiring an
