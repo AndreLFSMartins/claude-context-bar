@@ -140,38 +140,44 @@ summary:hover{color:var(--accent)}
 <nav class="toc">
   <div class="eyebrow">[ SPEC ]</div>
   <div class="doc-title">Click a status bar item to open its Claude Code tab</div>
-  <a href="#problem">The problem</a>
-  <a href="#goal">The goal</a>
+  <a href="#problem">Problem</a>
+  <a href="#goal">Goal</a>
   <a href="#non-goals">Non-goals</a>
   <a href="#background">Background: how the reveal works</a>
-  <a href="#design">The design</a>
-  <a href="#reveal-module" class="lvl-3">New module: src/revealSession.ts</a>
-  <a href="#extension-ts" class="lvl-3">Changes to src/extension.ts</a>
-  <a href="#text-updates" class="lvl-3">Text and documentation updates</a>
-  <a href="#testing">Testing and verification</a>
-  <a href="#risks">Known risks</a>
+  <a href="#design">Design</a>
+  <a href="#src-revealsession-ts" class="lvl-3">src/revealSession.ts — new pure module</a>
+  <a href="#src-extension-ts" class="lvl-3">src/extension.ts</a>
+  <a href="#text-updates" class="lvl-3">Text updates</a>
+  <a href="#testing">Testing</a>
+  <a href="#risks">Risks</a>
 </nav>
 <main>
-  <h2 id="problem">The <em>problem</em> <a class="backlink" href="#problem">↑</a></h2>
+<div class="eyebrow">
+  <span class="meta">2026-08-09</span>
+  <span class="chip on">approved</span>
+</div>
 
-  <p>Clicking a status bar item hides the session (<code>claudeContextBar.hideSession</code>). That is not what the interaction affords: the item names a live Claude Code tab, so clicking it should take you to that tab. Hiding is a rarely wanted action occupying the only interaction the status bar offers.</p>
+<h2 id="problem">Problem</h2>
 
-  <h2 id="goal">The <em>goal</em> <a class="backlink" href="#goal">↑</a></h2>
+<p>Clicking a status bar item hides the session (<code>claudeContextBar.hideSession</code>). That is not what the click affords: the item names a live Claude Code tab, so clicking it should take you to that tab. Hiding is a rarely wanted action occupying the only interaction the status bar offers.</p>
 
-  <p class="statement">Clicking an item reveals the Claude Code tab for that session in the current window. The manual hide feature is removed entirely.</p>
+<h2 id="goal">Goal</h2>
 
-  <h2 id="non-goals">Non-<em>goals</em> <a class="backlink" href="#non-goals">↑</a></h2>
+<p class="statement">Clicking an item reveals the Claude Code tab for that session <strong>in the current window</strong>. The manual hide feature is removed entirely.</p>
 
-  <div class="callout">
-    <span class="label">Scope boundary</span>
-    Cross-window jumps, filtering changes, and automatic idle hiding are out of scope. Sessions from the terminal CLI and Claude Desktop continue to appear in the bar; the click handler must cope with them gracefully.
-  </div>
+<h2 id="non-goals">Non-goals</h2>
 
-  <h2 id="background">Background: how the <em>reveal</em> works <a class="backlink" href="#background">↑</a></h2>
+<ul>
+  <li><strong>Cross-window jumps.</strong> VS Code has no API to focus another window, and the workaround (<code>vscode://file/&lt;cwd&gt;</code> plus a shared-state file for cross-window IPC) is unverified. Out of scope.</li>
+  <li><strong>Changing which sessions appear.</strong> The existing filters (<code>onlyCurrentWindow</code>, <code>showScheduledTasks</code>, <code>idleTimeout</code>, <code>maxItems</code>) stay exactly as they are. In particular, sessions from the terminal CLI and Claude Desktop keep showing up, so the click handler must cope with them.</li>
+  <li><strong>Automatic idle hiding.</strong> <code>idleTimeout</code> is untouched. Only the <em>manual</em> hide goes away.</li>
+</ul>
 
-  <p>The Claude Code VS Code extension (verified by reading the bundle) registers a private command:</p>
+<h2 id="background">Background: how the reveal works</h2>
 
-  <pre><code>registerCommand("claude-vscode.editor.open", async (sessionId, prompt, viewColumn) => {
+<p>The Claude Code VS Code extension (verified by reading the bundle of <code>anthropic.claude-code-2.1.226-darwin-arm64</code>) registers:</p>
+
+<pre><code class="language-ts">registerCommand("claude-vscode.editor.open", async (sessionId, prompt, viewColumn) => {
     ... createPanel(sessionId, prompt, viewColumn)
 })
 
@@ -180,24 +186,26 @@ createPanel(e, t, r) {
     ... // no panel for this id: creates a NEW webview panel
 }</code></pre>
 
-  <p><code>sessionPanels</code> is keyed by the Claude Code session id — the same UUID that names the <code>.jsonl</code> file this extension already reads. Calling <code>executeCommand('claude-vscode.editor.open', sessionId)</code> reveals the tab when the panel lives in this window.</p>
+<p><code>sessionPanels</code> is keyed by the Claude Code session id — the same UUID that names the <code>.jsonl</code> file this extension already reads. So <code>executeCommand('claude-vscode.editor.open', sessionId)</code> reveals the tab when the panel lives in this window.</p>
 
-  <p>Two consequences drive the <a href="#design">design</a>:</p>
+<p>Note that <code>SessionInfo.sessionId</code> is <strong>not</strong> that UUID: it is truncated to 8 characters for the tooltip. The command needs the full id, so a separate <code>fullSessionId</code> field carries the untruncated filename stem.</p>
 
-  <ol>
-    <li>The command is <strong>private, undocumented API</strong>. It can disappear in any update, so every call is guarded.</li>
-    <li>When the id is <em>not</em> in <code>sessionPanels</code>, the call <strong>creates a new tab</strong> instead of revealing one. Sessions that are not IDE tabs at all (terminal, Claude Desktop, SDK) must therefore never reach the command.</li>
-  </ol>
+<p>Two consequences drive the design:</p>
 
-  <p>Session origin is readable from the <code>.jsonl</code>: the <code>entrypoint</code> field carries <code>claude-vscode</code>, <code>cli</code>, <code>sdk-cli</code>, or <code>claude-desktop</code>. The field is present on nearly every line in the file, so the parser's existing forward pass always sees it.</p>
+<ol>
+  <li>The command is <strong>private, undocumented API</strong>. It can disappear in any update, so every call is guarded.</li>
+  <li>When the id is <em>not</em> in <code>sessionPanels</code>, the call <strong>creates a new tab</strong> instead of revealing one. Sessions that are not IDE tabs at all (terminal, Claude Desktop, SDK) must therefore never reach the command.</li>
+</ol>
 
-  <h2 id="design">The <em>design</em> <a class="backlink" href="#design">↑</a></h2>
+<p>Session origin is readable from the <code>.jsonl</code>: the <code>entrypoint</code> field carries <code>claude-vscode</code>, <code>cli</code>, <code>sdk-cli</code>, or <code>claude-desktop</code>. Verified across the local session files: the field is present on nearly every <code>user</code>/<code>assistant</code>/<code>attachment</code>/<code>system</code> line, not only the first, so the parser's existing forward pass (which starts after the last <code>/clear</code>) always sees it.</p>
 
-  <h3 id="reveal-module">New module: <code>src/revealSession.ts</code> <a class="backlink" href="#reveal-module">↑</a></h3>
+<h2 id="design">Design</h2>
 
-  <p>Follows the existing pattern of <code>contextLimit.ts</code> and <code>sessionFilter.ts</code>: no <code>vscode</code> import, so it is testable under <code>node --test</code>.</p>
+<h3 id="src-revealsession-ts"><code>src/revealSession.ts</code> — new pure module</h3>
 
-  <pre><code>export type ClickAction =
+<p>Follows the existing pattern of <code>contextLimit.ts</code> and <code>sessionFilter.ts</code>: no <code>vscode</code> import, so it is testable under <code>node --test</code>.</p>
+
+<pre><code class="language-ts">export type ClickAction =
   | { kind: 'reveal'; sessionId: string }
   | { kind: 'notice'; message: string };
 
@@ -206,111 +214,97 @@ export function resolveClickAction(
   claudeCommandAvailable: boolean
 ): ClickAction;</code></pre>
 
-  <p>Decision order:</p>
+<p>Decision order:</p>
 
-  <ol>
-    <li><code>entrypoint !== 'claude-vscode'</code> → <code>notice</code>. Covers <code>cli</code>, <code>sdk-cli</code>, <code>claude-desktop</code>, and empty/missing <code>entrypoint</code> (older sessions). This is fail-closed: an unknown origin never reaches the command, so a click can never spawn a surprise tab. The message names the origin it saw.</li>
-    <li><code>!claudeCommandAvailable</code> → <code>notice</code> saying the Claude Code extension was not found.</li>
-    <li>Otherwise → <code>reveal</code>.</li>
-  </ol>
+<ol>
+  <li><code>entrypoint !== 'claude-vscode'</code> → <code>notice</code>. Covers <code>cli</code>, <code>sdk-cli</code>, <code>claude-desktop</code>, and an empty/missing <code>entrypoint</code> (older sessions). Fail-closed: an unknown origin never reaches the command, so a click can never spawn a surprise tab. The message names the origin it saw.</li>
+  <li><code>!claudeCommandAvailable</code> → <code>notice</code> saying the Claude Code extension was not found.</li>
+  <li>Otherwise → <code>reveal</code>.</li>
+</ol>
 
-  <p>Checking <code>entrypoint</code> first yields the more specific message when both conditions hold.</p>
+<p>Checking <code>entrypoint</code> first yields the more specific message when both conditions hold.</p>
 
-  <h3 id="extension-ts">Changes to <code>src/extension.ts</code> <a class="backlink" href="#extension-ts">↑</a></h3>
+<h3 id="src-extension-ts"><code>src/extension.ts</code></h3>
 
-  <p><strong>Added</strong></p>
+<p><strong>Added</strong></p>
 
-  <ul>
-    <li><code>entrypoint: string</code> on <code>SessionInfo</code> and on the <code>TokenUsage</code> shape returned by <code>getLatestTokenCount</code>, captured in the forward pass (first line that carries the field), defaulting to <code>''</code>.</li>
-    <li>Command <code>claudeContextBar.revealSession</code>, taking <code>(sessionId, entrypoint)</code>. It resolves availability with <code>vscode.commands.getCommands(true)</code>, calls <code>resolveClickAction</code>, then either <code>executeCommand('claude-vscode.editor.open', sessionId)</code> or <code>window.showInformationMessage(message)</code>.</li>
-    <li>Status bar item <code>command</code> points at <code>claudeContextBar.revealSession</code>; tooltip footer becomes <code>*Click to open this tab*</code>.</li>
-  </ul>
+<ul>
+  <li><code>entrypoint: string</code> on <code>SessionInfo</code> and on the <code>TokenUsage</code> shape returned by <code>getLatestTokenCount</code>, captured in the forward pass (first line that carries the field), defaulting to <code>''</code>.</li>
+  <li>Command <code>claudeContextBar.revealSession</code>, taking <code>(sessionId, entrypoint)</code>. It resolves availability with <code>vscode.commands.getCommands(true)</code>, calls <code>resolveClickAction</code>, then either <code>executeCommand('claude-vscode.editor.open', sessionId)</code> or <code>window.showInformationMessage(message)</code>.</li>
+  <li>Status bar item <code>command</code> points at <code>claudeContextBar.revealSession</code>; tooltip footer becomes <em>Click to open this tab</em>.</li>
+</ul>
 
-  <p><strong>Removed</strong></p>
+<p><strong>Removed</strong></p>
 
-  <ul>
-    <li>The <code>hiddenSessions</code> map.</li>
-    <li>The <code>claudeContextBar.hideSession</code> command registration.</li>
-    <li>The hidden-session filter in <code>findActiveSessions</code> (the auto-unhide-on-new-activity branch goes with it).</li>
-    <li>The <code>*Click to hide*</code> tooltip footer.</li>
-  </ul>
+<ul>
+  <li>The <code>hiddenSessions</code> map.</li>
+  <li>The <code>claudeContextBar.hideSession</code> command registration.</li>
+  <li>The hidden-session filter in <code>findActiveSessions</code> (the auto-unhide-on-new-activity branch goes with it).</li>
+  <li>The <em>Click to hide</em> tooltip footer.</li>
+</ul>
 
-  <h3 id="text-updates">Text and documentation <em>updates</em> <a class="backlink" href="#text-updates">↑</a></h3>
+<h3 id="text-updates">Text updates</h3>
 
-  <ul>
-    <li><code>package.json</code>: drop "Click to manually hide." from the <code>idleTimeout</code> description.</li>
-    <li><code>README.md</code>: update the click description and the idle-timeout wording.</li>
-    <li><code>CHANGELOG.md</code>: new entry for the behaviour change (it is breaking for anyone relying on click-to-hide).</li>
-  </ul>
+<ul>
+  <li><code>package.json</code>: drop "Click to manually hide." from the <code>idleTimeout</code> description.</li>
+  <li><code>README.md</code>: update the click description and the idle-timeout wording.</li>
+  <li><code>CHANGELOG.md</code>: new entry for the behaviour change (it is breaking for anyone relying on click-to-hide).</li>
+</ul>
 
-  <h2 id="testing">Testing and <em>verification</em> <a class="backlink" href="#testing">↑</a></h2>
+<h2 id="testing">Testing</h2>
 
-  <p>Unit tests in <code>src/revealSession.test.ts</code>, run by the existing <code>npm test</code> (<code>tsc</code> then <code>node --test out/*.test.js</code>):</p>
+<p><code>src/revealSession.test.ts</code>, run by the existing <code>npm test</code> (<code>tsc</code> then <code>node --test out/*.test.js</code>):</p>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Case</th>
-        <th>Expected</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td><code>entrypoint: 'claude-vscode'</code>, command available</td>
-        <td><code>reveal</code> with the session id</td>
-      </tr>
-      <tr>
-        <td><code>entrypoint: 'cli'</code></td>
-        <td><code>notice</code></td>
-      </tr>
-      <tr>
-        <td><code>entrypoint: 'sdk-cli'</code></td>
-        <td><code>notice</code></td>
-      </tr>
-      <tr>
-        <td><code>entrypoint: 'claude-desktop'</code></td>
-        <td><code>notice</code></td>
-      </tr>
-      <tr>
-        <td><code>entrypoint: ''</code></td>
-        <td><code>notice</code></td>
-      </tr>
-      <tr>
-        <td><code>entrypoint: 'claude-vscode'</code>, command unavailable</td>
-        <td><code>notice</code> mentioning the extension</td>
-      </tr>
-      <tr>
-        <td>Both conditions failing</td>
-        <td><code>notice</code> about the origin, not about the extension</td>
-      </tr>
-    </tbody>
-  </table>
+<table>
+  <thead>
+    <tr>
+      <th>Case</th>
+      <th>Expected</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>entrypoint: 'claude-vscode'</code>, command available</td>
+      <td><code>reveal</code> with the session id</td>
+    </tr>
+    <tr>
+      <td><code>entrypoint: 'cli'</code></td>
+      <td><code>notice</code></td>
+    </tr>
+    <tr>
+      <td><code>entrypoint: 'sdk-cli'</code></td>
+      <td><code>notice</code></td>
+    </tr>
+    <tr>
+      <td><code>entrypoint: 'claude-desktop'</code></td>
+      <td><code>notice</code></td>
+    </tr>
+    <tr>
+      <td><code>entrypoint: ''</code></td>
+      <td><code>notice</code></td>
+    </tr>
+    <tr>
+      <td><code>entrypoint: 'claude-vscode'</code>, command unavailable</td>
+      <td><code>notice</code> mentioning the extension</td>
+    </tr>
+    <tr>
+      <td>both conditions failing</td>
+      <td><code>notice</code> about the origin, not about the extension</td>
+    </tr>
+  </tbody>
+</table>
 
-  <p><strong>Manual gate (required).</strong> In the Extension Development Host:</p>
+<p>Parser coverage: <code>getLatestTokenCount</code> reads the filesystem and is not currently under test, so <code>entrypoint</code> extraction is verified through the manual gate rather than a unit test.</p>
 
-  <ul>
-    <li>Click an item for a session started as a VS Code tab and confirm the tab is revealed.</li>
-    <li>Click one for a terminal session and confirm the notice appears with no new tab.</li>
-  </ul>
+<p><strong>Manual gate (required).</strong> Reading the bundle proves the command's shape, not its runtime behaviour. In the Extension Development Host: click an item for a session started as a VS Code tab and confirm the tab is revealed; click one for a terminal session and confirm the notice appears with no new tab.</p>
 
-  <p>Parser coverage: <code>getLatestTokenCount</code> reads the filesystem and is not currently under test, so <code>entrypoint</code> extraction is verified through the manual gate rather than a unit test.</p>
+<h2 id="risks">Risks</h2>
 
-  <h2 id="risks">Known <em>risks</em> <a class="backlink" href="#risks">↑</a></h2>
-
-  <div class="callout warn">
-    <span class="label">Private API</span>
-    <code>claude-vscode.editor.open</code> is private API of the Claude Code extension and can disappear in any update. Mitigated by the <code>getCommands</code> guard: if it disappears, the click degrades to an informational message instead of throwing.
-  </div>
-
-  <div class="callout warn">
-    <span class="label">Closed tab resume</span>
-    A tab closed within <code>idleTimeout</code> still shows in the bar; clicking it opens a new tab resuming that session rather than revealing the old one. This is accepted — resuming the conversation you just closed is a reasonable outcome.
-  </div>
-
-  <div class="callout warn">
-    <span class="label">Multi-window ambiguity</span>
-    Two windows with the same folder open cannot be told apart. Nothing in the <code>.jsonl</code> identifies a window and no API exposes Claude panels by session id, so a click in the wrong window opens a new tab there. Accepted as a rare case.
-  </div>
+<ul>
+  <li><code>claude-vscode.editor.open</code> is private API of the Claude Code extension. Mitigated by the <code>getCommands</code> guard: if it disappears, the click degrades to an informational message instead of throwing.</li>
+  <li>A tab closed within <code>idleTimeout</code> still shows in the bar; clicking it opens a new tab resuming that session rather than revealing the old one. Accepted — resuming the conversation you just closed is a reasonable outcome.</li>
+  <li>Two windows with the same folder open cannot be told apart. Nothing in the <code>.jsonl</code> identifies a window and no API exposes the Claude panels by session id, so a click in the wrong window opens a new tab there. Accepted as a rare case.</li>
+</ul>
   <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
   <div class="signature">
     <div class="name">rich-doc</div>
@@ -319,4 +313,4 @@ export function resolveClickAction(
 </main>
 </body>
 </html>
-<!-- rich-doc-src-sha256:c5dd123f762f682055d75bd5807af47ea8dc563ce6a8779dc023d55421253b08 -->
+<!-- rich-doc-src-sha256:681538350da357368478af522f024427b8ab8b05019c4d714989d04b28a8053e -->

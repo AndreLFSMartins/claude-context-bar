@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Click to Open Claude Code Tab</title>
+<style>
+/* rich-doc design system — Anthropic brand, document-oriented.
+   Light paper/ink, Lora italic display, Poppins body, system mono.
+   Hard rules honored: ONE accent per piece, no gradients, no drop-shadow,
+   monogram always ink, hairlines 1px/2px only. Inline this whole file into a
+   single <style>. Fonts come from Google Fonts (the only external request);
+   everything degrades to system serif/sans/mono offline. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root{
+  /* Anthropic brand */
+  --paper:#faf9f5; --ink:#141413; --stone:#b0aea5; --hairline:#e8e6dc;
+  --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+  --accent:var(--orange);            /* fixed primary accent */
+  --font-head:"Poppins",Arial,sans-serif;
+  --font-body:"Lora",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --lh-body:1.55; --lh-title:1.12; --maxw:1140px;
+}
+[data-mode="dark"]{--paper:#141413; --ink:#faf9f5; --stone:#8a8780; --hairline:#2a2926}
+
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/var(--lh-body) var(--font-body);
+  display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+
+/* ---- TOC sidebar ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  border-right:1px solid var(--hairline);padding:46px 30px}
+nav.toc .eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);margin-bottom:14px}
+nav.toc .doc-title{font:400 italic 30px/1.1 var(--font-body);
+  letter-spacing:-.005em;margin:0 0 26px;color:var(--ink)}
+nav.toc a{display:block;color:var(--stone);text-decoration:none;font-size:14.5px;font-family:var(--font-head);
+  padding:5px 0;border:none}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.lvl-3{padding-left:16px;font-size:13.5px}
+
+/* ---- main column ---- */
+main{padding:56px 72px 140px;max-width:var(--maxw)}
+.eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
+.meta{font:400 13px/1.4 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+h2{font:600 30px/var(--lh-title) var(--font-head);letter-spacing:-.015em;margin:56px 0 16px;
+  padding-bottom:10px;border-bottom:1px solid var(--hairline);scroll-margin-top:24px}
+h2:first-of-type{margin-top:0}
+/* anchor word inside a title → Lora italic, accent */
+h2 em,.anchor{font:400 italic 1.1em/1 var(--font-body);color:var(--accent);
+  letter-spacing:-.005em}
+h3{font:600 20px/1.2 var(--font-head);margin:34px 0 10px;scroll-margin-top:24px}
+p,li{color:var(--ink)} strong{font-weight:700}
+a{color:var(--accent);text-underline-offset:2px}
+a.backlink{float:right;font:400 12px/1.6 var(--font-head);color:var(--stone);text-decoration:none}
+a.backlink:hover{color:var(--accent)}
+
+/* pull statement — Lora italic protagonist */
+.statement{font:400 italic 26px/1.25 var(--font-body);
+  letter-spacing:-.01em;color:var(--ink);margin:26px 0;max-width:24em;text-wrap:pretty}
+
+/* ---- callout: single accent, hairline, no shadow ---- */
+.callout{border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  background:transparent;padding:14px 20px;margin:20px 0}
+.callout .label{font:500 11px/1 var(--font-head);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--accent);display:block;margin-bottom:8px}
+.callout.warn .label::after{content:" — watch out"}
+
+/* ---- chips ---- */
+.chip{display:inline-block;font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 9px;border:1px solid var(--hairline);color:var(--stone);margin:0 5px 5px 0}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+
+/* ---- tables: hairlines + mono headers, no heavy fills ---- */
+table{border-collapse:collapse;width:100%;margin:20px 0;font-size:15px;border:1px solid var(--hairline)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--hairline)}
+th{font:500 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+tr:last-child td{border-bottom:none}
+td .yes{color:var(--accent);font-weight:700} td .no{color:var(--ink);font-weight:700}
+
+/* ---- figure / diagram ---- */
+figure{margin:26px 0;padding:22px;border:1px solid var(--hairline);text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{margin-top:12px;font:400 13px/1.4 var(--font-head);color:var(--stone);
+  text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- code / details ---- */
+code{font:14px var(--font-mono);color:var(--accent)}
+pre{border:1px solid var(--hairline);padding:16px;overflow-x:auto;font:13px/1.6 var(--font-mono);color:var(--ink)}
+pre code{color:inherit}
+details{border:1px solid var(--hairline);padding:4px 18px;margin:16px 0}
+summary{cursor:pointer;font:500 14px/1 var(--font-head);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--stone);padding:12px 0}
+summary:hover{color:var(--accent)}
+
+/* ---- signature: monogram (always ink) + spectrum bar ---- */
+.spectrum{display:flex;height:4px;margin:40px 0 22px}
+.spectrum span{flex:1}
+.spectrum .s1{background:var(--orange)} .spectrum .s2{background:var(--blue)} .spectrum .s3{background:var(--green)}
+.signature{display:flex;flex-direction:column;gap:3px;color:var(--stone);
+  border-left:2px solid var(--accent);padding-left:16px}
+.signature .name{font:400 italic 18px/1 var(--font-body);color:var(--ink)}
+.signature .role{font:400 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.06em;color:var(--stone)}
+
+/* ---- phase color-coding: thin left bar, accent cycles ---- */
+.phase{display:flex;align-items:baseline;gap:10px;font:500 16px/1.4 var(--font-head);
+  padding:7px 0 7px 13px;border-left:3px solid var(--stone);margin:6px 0}
+.phase .pn{font:600 10px/1 var(--font-head);letter-spacing:.1em;text-transform:uppercase;color:var(--stone)}
+.phase.p-o{border-color:var(--orange)} .phase.p-b{border-color:var(--blue)} .phase.p-g{border-color:var(--green)}
+
+/* ---- metrics row: large numbers ---- */
+.metrics{display:flex;gap:28px;margin:24px 0;padding:18px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.metrics .metric{flex:0 1 auto}
+.metrics .big{font:700 34px/1 var(--font-head);color:var(--orange)}
+.metrics .label{font:500 11px/1 var(--font-head);letter-spacing:.08em;text-transform:uppercase;color:var(--stone);margin-top:6px}
+
+/* ---- status chips: done / active / todo ---- */
+.schip{display:inline-block;font:600 11px/1 var(--font-head);letter-spacing:.05em;text-transform:uppercase;
+  padding:5px 10px;border-radius:20px;margin:0 5px 5px 0}
+.schip.done{background:var(--green);color:#fff}
+.schip.active{background:var(--orange);color:#fff}
+.schip.todo{background:var(--hairline);color:var(--stone)}
+
+/* ---- progress bar ---- */
+.progress{margin:18px 0}
+.progress .bar{height:8px;border-radius:6px;background:var(--hairline);overflow:hidden}
+.progress .fill{height:100%;background:var(--orange)}
+.progress .label{font:500 12px/1 var(--font-head);color:var(--stone);margin-top:6px}
+
+@media(max-width:880px){
+  body{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--hairline)}
+  main{padding:32px 24px 90px}
+}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="eyebrow">[ PLAN ]</div>
+  <div class="doc-title">Click to Open Claude Code Tab</div>
+  <a href="#overview">Overview</a>
+  <a href="#progress">Progress & Status</a>
+  <a href="#global-constraints">Global Constraints</a>
+  <a href="#task-1">Task 1: Pure click-decision module</a>
+  <a href="#task-1-interfaces" class="lvl-3">Interfaces</a>
+  <a href="#task-1-step-1" class="lvl-3">Step 1: Write the failing test</a>
+  <a href="#task-1-step-2" class="lvl-3">Step 2: Run the test to verify it fails</a>
+  <a href="#task-1-step-3" class="lvl-3">Step 3: Write the minimal implementation</a>
+  <a href="#task-1-step-4" class="lvl-3">Step 4: Run the test to verify it passes</a>
+  <a href="#task-1-step-5" class="lvl-3">Step 5: Commit</a>
+  <a href="#task-2">Task 2: Wire the click to the Claude Code tab and remove hiding</a>
+  <a href="#task-2-interfaces" class="lvl-3">Interfaces</a>
+  <a href="#task-2-step-1" class="lvl-3">Step 1: Import the new module</a>
+  <a href="#task-2-step-2" class="lvl-3">Step 2: Add the new fields to both interfaces</a>
+  <a href="#task-2-step-3" class="lvl-3">Step 3: Delete the hidden-sessions state</a>
+  <a href="#task-2-step-4" class="lvl-3">Step 4: Replace the hide command with the reveal command</a>
+  <a href="#task-2-step-5" class="lvl-3">Step 5: Capture entrypoint while parsing the session file</a>
+  <a href="#task-2-step-6" class="lvl-3">Step 6: Return entrypoint from all three exit points</a>
+  <a href="#task-2-step-7" class="lvl-3">Step 7: Populate the new fields when building each session</a>
+  <a href="#task-2-step-8" class="lvl-3">Step 8: Delete the hidden-session filter</a>
+  <a href="#task-2-step-9" class="lvl-3">Step 9: Update the tooltip footer and the item command</a>
+  <a href="#task-2-step-10" class="lvl-3">Step 10: Verify the build and the suite</a>
+  <a href="#task-2-step-11" class="lvl-3">Step 11: Verify no trace of the removed feature remains</a>
+  <a href="#task-2-step-12" class="lvl-3">Step 12: Commit</a>
+  <a href="#task-3">Task 3: Documentation and the manual verification gate</a>
+  <a href="#task-3-interfaces" class="lvl-3">Interfaces</a>
+  <a href="#task-3-step-1" class="lvl-3">Step 1: Drop the stale click hint from the setting description</a>
+  <a href="#task-3-step-2" class="lvl-3">Step 2: Update the README feature line</a>
+  <a href="#task-3-step-3" class="lvl-3">Step 3: Update the README settings table row</a>
+  <a href="#task-3-step-4" class="lvl-3">Step 4: Add the CHANGELOG entry</a>
+  <a href="#task-3-step-5" class="lvl-3">Step 5: Verify nothing still advertises click-to-hide</a>
+  <a href="#task-3-step-6" class="lvl-3">Step 6: Run the full suite one more time</a>
+  <a href="#task-3-step-7" class="lvl-3">Step 7: Commit</a>
+  <a href="#task-3-step-8" class="lvl-3">Step 8: Manual verification gate (cannot be automated)</a>
+  <a href="#success-criteria">Success Criteria</a>
+</nav>
+<main>
+<p class="eyebrow">Implementation Plan</p>
+<h1>Click to Open Claude Code Tab</h1>
+<p class="statement">Clicking a status bar item reveals that session's Claude Code tab in the current window, and the manual hide feature is removed.</p>
+
+<h2 id="overview">Overview</h2>
+<p><strong>Architecture:</strong> A new pure module decides what a click should do (<code>reveal</code> or <code>notice</code>) from the session's <code>entrypoint</code> and whether the Claude extension's private command exists. <code>extension.ts</code> captures <code>entrypoint</code> and the full session UUID while parsing the <code>.jsonl</code>, registers <code>claudeContextBar.revealSession</code>, and drops everything belonging to <code>claudeContextBar.hideSession</code>.</p>
+
+<p><strong>Tech Stack:</strong> TypeScript, VS Code extension API, <code>node:test</code> (no test framework dependency)</p>
+
+<p><strong>Specification:</strong> <a href="2026-08-09-reveal-session-on-click-design.html">docs/superpowers/specs/2026-08-09-reveal-session-on-click-design.md</a></p>
+
+<h2 id="progress">Progress & Status</h2>
+
+<p><strong>3 Tasks · 25 Steps</strong></p>
+
+<p><span class="chip">Not started</span></p>
+
+<p><strong>0 of 25 steps complete (0%)</strong></p>
+
+<h2 id="global-constraints">Global Constraints</h2>
+
+<ul>
+<li><strong>Branch:</strong> <code>feat/reveal-session-on-click</code>. Do not commit to <code>main</code>.</li>
+<li><strong>Test command:</strong> <code>npm test</code> — it runs <code>tsc -p ./</code> then <code>node --test out/*.test.js</code>. There is no watch/partial runner; every verification step runs the whole thing.</li>
+<li><strong>Test files:</strong> live beside their source as <code>src/&lt;name&gt;.test.ts</code> and import with a relative path and no extension (<code>from './revealSession'</code>), matching <code>sessionFilter.test.ts</code>.</li>
+<li><strong>Pure modules:</strong> must not <code>import * as vscode</code> — that is what keeps them runnable under plain node.</li>
+<li><strong>Private command id:</strong> <code>claude-vscode.editor.open</code>. Never call it without first checking it exists.</li>
+<li><strong>IDE entrypoint value:</strong> the exact string <code>claude-vscode</code>.</li>
+<li><strong>Language:</strong> Comments and identifiers in English, matching the existing files.</li>
+</ul>
+
+<h2 id="task-1">Task 1: Pure click-decision module</h2>
+
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>src/revealSession.ts</code></li>
+<li>Test: <code>src/revealSession.test.ts</code></li>
+</ul>
+
+<h3 id="task-1-interfaces">Interfaces</h3>
+
+<p><strong>Consumes:</strong> nothing.</p>
+
+<p><strong>Produces:</strong></p>
+<ul>
+<li><code>export const CLAUDE_IDE_ENTRYPOINT = 'claude-vscode'</code></li>
+<li><code>export const CLAUDE_REVEAL_COMMAND = 'claude-vscode.editor.open'</code></li>
+<li><code>export type ClickAction = { kind: 'reveal'; sessionId: string } | { kind: 'notice'; message: string }</code></li>
+<li><code>export function resolveClickAction(session: { sessionId: string; entrypoint: string }, claudeCommandAvailable: boolean): ClickAction</code></li>
+</ul>
+
+<h3 id="task-1-step-1">Step 1: Write the failing test</h3>
+
+<p>Create <code>src/revealSession.test.ts</code>:</p>
+
+<details>
+<summary>Show test code</summary>
+
+<pre><code>import { test, describe } from 'node:test';
+import assert from 'node:assert';
+import { resolveClickAction, CLAUDE_IDE_ENTRYPOINT, CLAUDE_REVEAL_COMMAND } from './revealSession';
+
+describe('resolveClickAction', () => {
+    test('reveals the tab for an IDE session when the Claude command exists', () => {
+        const action = resolveClickAction(
+            { sessionId: '35f9dcdc-084f-4846-9b21-198e1711a3d7', entrypoint: CLAUDE_IDE_ENTRYPOINT },
+            true
+        );
+        assert.deepStrictEqual(action, {
+            kind: 'reveal',
+            sessionId: '35f9dcdc-084f-4846-9b21-198e1711a3d7'
+        });
+    });
+
+    test('refuses a terminal session: there is no tab to reveal', () => {
+        const action = resolveClickAction({ sessionId: 'abc', entrypoint: 'cli' }, true);
+        assert.strictEqual(action.kind, 'notice');
+        assert.match((action as { message: string }).message, /cli/);
+    });
+
+    test('refuses an SDK session', () => {
+        const action = resolveClickAction({ sessionId: 'abc', entrypoint: 'sdk-cli' }, true);
+        assert.strictEqual(action.kind, 'notice');
+    });
+
+    test('refuses a Claude Desktop session', () => {
+        const action = resolveClickAction({ sessionId: 'abc', entrypoint: 'claude-desktop' }, true);
+        assert.strictEqual(action.kind, 'notice');
+    });
+
+    test('refuses a session with no recorded entrypoint, failing closed', () => {
+        const action = resolveClickAction({ sessionId: 'abc', entrypoint: '' }, true);
+        assert.strictEqual(action.kind, 'notice');
+        assert.match((action as { message: string }).message, /unknown/);
+    });
+
+    test('reports the missing extension when the Claude command is absent', () => {
+        const action = resolveClickAction(
+            { sessionId: 'abc', entrypoint: CLAUDE_IDE_ENTRYPOINT },
+            false
+        );
+        assert.strictEqual(action.kind, 'notice');
+        assert.match((action as { message: string }).message, /Claude Code extension/);
+    });
+
+    test('reports the origin, not the extension, when both checks fail', () => {
+        const action = resolveClickAction({ sessionId: 'abc', entrypoint: 'cli' }, false);
+        assert.strictEqual(action.kind, 'notice');
+        assert.match((action as { message: string }).message, /cli/);
+    });
+});
+
+describe('exported constants', () => {
+    test('names the private Claude Code command exactly', () => {
+        assert.strictEqual(CLAUDE_REVEAL_COMMAND, 'claude-vscode.editor.open');
+    });
+
+    test('names the IDE entrypoint value exactly', () => {
+        assert.strictEqual(CLAUDE_IDE_ENTRYPOINT, 'claude-vscode');
+    });
+});</code></pre>
+
+</details>
+
+<h3 id="task-1-step-2">Step 2: Run the test to verify it fails</h3>
+
+<p>Run: <code>npm test</code></p>
+<p><strong>Expected:</strong> FAIL at compile time — <code>tsc</code> errors with <code>Cannot find module './revealSession'</code>.</p>
+
+<h3 id="task-1-step-3">Step 3: Write the minimal implementation</h3>
+
+<p>Create <code>src/revealSession.ts</code>:</p>
+
+<details>
+<summary>Show implementation code</summary>
+
+<pre><code>/**
+ * Pure decision for what clicking a status bar item should do.
+ *
+ * The Claude Code extension keys its open webview panels by session id and
+ * exposes `claude-vscode.editor.open`, which reveals the panel for an id it
+ * knows. That command is private, undocumented API, and when it does NOT
+ * recognise the id it creates a brand new tab instead of revealing one. Both
+ * facts are why the decision lives here, behind two guards, rather than being
+ * a bare `executeCommand` at the click site.
+ *
+ * Pure so the behaviour is testable without a VS Code host, following the same
+ * pattern as `getContextLimitForModel` in contextLimit.ts.
+ */
+
+/** `entrypoint` value written by Claude Code sessions running as a VS Code tab. */
+export const CLAUDE_IDE_ENTRYPOINT = 'claude-vscode';
+
+/** Private command of the Claude Code extension that reveals a session's panel. */
+export const CLAUDE_REVEAL_COMMAND = 'claude-vscode.editor.open';
+
+export type ClickAction =
+    | { kind: 'reveal'; sessionId: string }
+    | { kind: 'notice'; message: string };
+
+/**
+ * @param session                 Full (untruncated) session id plus the origin
+ *                                recorded in the session's `.jsonl`.
+ * @param claudeCommandAvailable  Whether CLAUDE_REVEAL_COMMAND is registered.
+ *
+ * Origin is checked first: when both guards fail, the origin is the more
+ * specific explanation. An empty entrypoint fails closed — older session files
+ * do not record one, and guessing would risk opening an unwanted tab.
+ */
+export function resolveClickAction(
+    session: { sessionId: string; entrypoint: string },
+    claudeCommandAvailable: boolean
+): ClickAction {
+    if (session.entrypoint !== CLAUDE_IDE_ENTRYPOINT) {
+        const origin = session.entrypoint || 'unknown';
+        return {
+            kind: 'notice',
+            message: `This session has no Claude Code tab in this window to open (origin: ${origin}).`
+        };
+    }
+
+    if (!claudeCommandAvailable) {
+        return {
+            kind: 'notice',
+            message: 'The Claude Code extension for VS Code was not found, so its tab cannot be opened.'
+        };
+    }
+
+    return { kind: 'reveal', sessionId: session.sessionId };
+}</code></pre>
+
+</details>
+
+<h3 id="task-1-step-4">Step 4: Run the test to verify it passes</h3>
+
+<p>Run: <code>npm test</code></p>
+<p><strong>Expected:</strong> PASS — all 9 new tests pass alongside the existing <code>contextLimit</code>, <code>sessionFilter</code>, and <code>usage</code> suites.</p>
+
+<h3 id="task-1-step-5">Step 5: Commit</h3>
+
+<pre><code>git add src/revealSession.ts src/revealSession.test.ts
+git commit -m "feat: add pure click-action resolver for status bar items"</code></pre>
+
+<h2 id="task-2">Task 2: Wire the click to the Claude Code tab and remove hiding</h2>
+
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>src/extension.ts</code></li>
+</ul>
+
+<h3 id="task-2-interfaces">Interfaces</h3>
+
+<p><strong>Consumes:</strong> <code>resolveClickAction</code>, <code>CLAUDE_REVEAL_COMMAND</code> from <a href="#task-1">Task 1</a>.</p>
+
+<p><strong>Produces:</strong> command <code>claudeContextBar.revealSession</code>, invoked with <code>(fullSessionId: string, entrypoint: string)</code>. <code>SessionInfo</code> gains <code>fullSessionId: string</code> and <code>entrypoint: string</code>; <code>TokenUsage</code> gains <code>entrypoint: string</code>.</p>
+
+<div class="callout"><strong>Why <code>fullSessionId</code>:</strong> <code>SessionInfo.sessionId</code> is truncated to 8 characters for the tooltip. The command needs the full UUID, so the untruncated stem is carried separately and the truncated one is left alone.</div>
+
+<h3 id="task-2-step-1">Step 1: Import the new module</h3>
+
+<p>In <code>src/extension.ts</code>, after the <code>sessionFilter</code> import (line 8), add:</p>
+
+<pre><code>import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
+import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';</code></pre>
+
+<h3 id="task-2-step-2">Step 2: Add the new fields to both interfaces</h3>
+
+<p>In <code>interface SessionInfo</code> (line 10), after <code>sessionId</code>, add:</p>
+
+<pre><code>    sessionId: string;
+    fullSessionId: string;
+    entrypoint: string;</code></pre>
+
+<p>In <code>interface TokenUsage</code> (line 196), after <code>wasCleared</code>, add:</p>
+
+<pre><code>    wasCleared: boolean;  // True if session ended with /clear command
+    entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
+}</code></pre>
+
+<h3 id="task-2-step-3">Step 3: Delete the hidden-sessions state</h3>
+
+<p>Remove these two lines (34-35) entirely:</p>
+
+<pre><code>// Track manually hidden sessions: sessionFile -> timestamp when hidden
+const hiddenSessions: Map<string, number> = new Map();</code></pre>
+
+<h3 id="task-2-step-4">Step 4: Replace the hide command with the reveal command</h3>
+
+<p>Replace the whole block at lines 51-57 with the new reveal command registration.</p>
+
+<h3 id="task-2-step-5">Step 5: Capture <code>entrypoint</code> while parsing the session file</h3>
+
+<p>In <code>getLatestTokenCount</code>, add the accumulator next to the others (line 370), and inside the forward pass, add entrypoint capture logic after the <code>entry.timestamp</code> block.</p>
+
+<h3 id="task-2-step-6">Step 6: Return <code>entrypoint</code> from all three exit points</h3>
+
+<p>Update the success <code>resolve</code> and both failure <code>resolve</code> calls to include <code>entrypoint</code>.</p>
+
+<h3 id="task-2-step-7">Step 7: Populate the new fields when building each session</h3>
+
+<p>In <code>findActiveSessions</code>, at the <code>sessionId</code> extraction (line 499-500), extract the <code>fullSessionId</code> separately, and add <code>fullSessionId</code> and <code>entrypoint</code> to the sessions object.</p>
+
+<h3 id="task-2-step-8">Step 8: Delete the hidden-session filter</h3>
+
+<p>Remove the entire <code>visibleSessions</code> filtering block and repoint the three remaining <code>visibleSessions</code> references to <code>finalSessions</code>.</p>
+
+<h3 id="task-2-step-9">Step 9: Update the tooltip footer and the item command</h3>
+
+<p>In the tooltip <code>MarkdownString</code> (line 758), replace the last line from <code>*Click to hide*</code> to <code>*Click to open this tab*</code>.</p>
+
+<p>Then replace the command block (lines 761-766) to invoke <code>claudeContextBar.revealSession</code> with <code>fullSessionId</code> and <code>entrypoint</code>.</p>
+
+<h3 id="task-2-step-10">Step 10: Verify the build and the suite</h3>
+
+<p>Run: <code>npm test</code></p>
+<p><strong>Expected:</strong> PASS, with no TypeScript errors. A <code>Cannot find name 'hiddenSessions'</code> or <code>'visibleSessions'</code> error means a reference was missed.</p>
+
+<h3 id="task-2-step-11">Step 11: Verify no trace of the removed feature remains</h3>
+
+<p>Run: <code>grep -rn "hiddenSessions\|hideSession\|visibleSessions" src/</code></p>
+<p><strong>Expected:</strong> no output at all.</p>
+
+<h3 id="task-2-step-12">Step 12: Commit</h3>
+
+<pre><code>git add src/extension.ts
+git commit -m "feat: click a status bar item to open its Claude Code tab
+
+Replaces click-to-hide. The click delegates to the Claude Code extension's
+private claude-vscode.editor.open command, guarded by the session's entrypoint
+and by the command actually being registered. Automatic idle hiding via
+idleTimeout is unchanged; only the manual hide is gone."</code></pre>
+
+<h2 id="task-3">Task 3: Documentation and the manual verification gate</h2>
+
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>package.json</code> — <code>claudeContextBar.idleTimeout</code> description</li>
+<li>Modify: <code>README.md</code> — lines 40 and 72</li>
+<li>Modify: <code>CHANGELOG.md</code> — line 11, <code>[Fork] - 2026-08-09</code> section</li>
+</ul>
+
+<h3 id="task-3-interfaces">Interfaces</h3>
+
+<p><strong>Consumes:</strong> the behaviour shipped by <a href="#task-2">Task 2</a>.</p>
+
+<p><strong>Produces:</strong> no code.</p>
+
+<h3 id="task-3-step-1">Step 1: Drop the stale click hint from the setting description</h3>
+
+<p>In <code>package.json</code>, the <code>claudeContextBar.idleTimeout</code> description currently reads:</p>
+
+<pre><code>"description": "Seconds of inactivity before hiding a session (default: 180 / 3 minutes). Set 0 to never hide idle sessions. Click to manually hide."</code></pre>
+
+<p>Change it to remove the "Click to manually hide" part.</p>
+
+<h3 id="task-3-step-2">Step 2: Update the README feature line</h3>
+
+<p><code>README.md</code> line 40 currently reads:</p>
+
+<pre><code>👆 **Click to Hide** — Click any context bar item to temporarily hide it; reappears on new activity</code></pre>
+
+<p>Replace it with:</p>
+
+<pre><code>👆 **Click to Open the Tab** — Click any context bar item to jump to that session's Claude Code tab in the current window. Sessions started outside a VS Code tab (terminal, Claude Desktop) have no tab to open and say so instead.</code></pre>
+
+<h3 id="task-3-step-3">Step 3: Update the README settings table row</h3>
+
+<p><code>README.md</code> line 72 currently reads:</p>
+
+<pre><code>| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before hiding a session (3 minutes). Set `0` to never hide idle sessions |</code></pre>
+
+<p>Replace it with:</p>
+
+<pre><code>| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before a session drops off the bar (3 minutes). Set `0` to keep idle sessions forever |</code></pre>
+
+<h3 id="task-3-step-4">Step 4: Add the CHANGELOG entry</h3>
+
+<p>In <code>CHANGELOG.md</code>, inside the <code>## [Fork] - 2026-08-09</code> section, add a <code>### Changed</code> block immediately before the existing <code>### Added</code> heading (line 11), describing the click-to-open behavior and removal of manual hiding.</p>
+
+<h3 id="task-3-step-5">Step 5: Verify nothing still advertises click-to-hide</h3>
+
+<p>Run: <code>grep -rn "Click to hide\|Click to Hide\|click to manually hide" README.md package.json src/ --ignore-case</code></p>
+<p><strong>Expected:</strong> no output.</p>
+
+<h3 id="task-3-step-6">Step 6: Run the full suite one more time</h3>
+
+<p>Run: <code>npm test</code></p>
+<p><strong>Expected:</strong> PASS.</p>
+
+<h3 id="task-3-step-7">Step 7: Commit</h3>
+
+<pre><code>git add package.json README.md CHANGELOG.md
+git commit -m "docs: describe click-to-open-tab and drop click-to-hide"</code></pre>
+
+<h3 id="task-3-step-8">Step 8: Manual verification gate (cannot be automated)</h3>
+
+<p>Reading the Claude extension's bundle proves the command's shape, not its runtime behaviour. Press <code>F5</code> in this repo to launch the Extension Development Host, then confirm all three:</p>
+
+<ol>
+<li>Click an item for a session started as a Claude Code <strong>tab in that window</strong> → the tab is revealed and focused.</li>
+<li>Click an item for a session started in a <strong>terminal</strong> (<code>entrypoint: cli</code>) → an information message appears naming the origin, and <strong>no new tab opens</strong>.</li>
+<li>Hover any item → the tooltip footer reads <em>Click to open this tab</em>.</li>
+</ol>
+
+<div class="callout warn"><strong>Important:</strong> If step 1 fails, the private command changed shape — do not paper over it; report it.</div>
+
+<h2 id="success-criteria">Success Criteria</h2>
+
+<ul>
+<li>All 25 steps are complete and checked</li>
+<li>All three manual verification checks pass</li>
+<li><code>npm test</code> reports full pass with no TypeScript errors</li>
+<li>No references to <code>hiddenSessions</code>, <code>hideSession</code>, or <code>visibleSessions</code> remain in <code>src/</code></li>
+<li>Documentation (README, package.json, CHANGELOG) is updated and consistent</li>
+<li>Branch <code>feat/reveal-session-on-click</code> is ready for review</li>
+</ul>
+  <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+  <div class="signature">
+    <div class="name">rich-doc</div>
+    <div class="role">superpowers companion · Anthropic brand</div>
+  </div>
+</main>
+</body>
+</html>
+<!-- rich-doc-src-sha256:8990d86e75e0c0e856cbe4f595591739140b543658e136f125bb633c05c3ae42 -->

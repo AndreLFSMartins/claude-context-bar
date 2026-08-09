@@ -51,6 +51,14 @@ Note that `SessionInfo.sessionId` is **not** that UUID: it is truncated to 8 cha
 for the tooltip. The command needs the full id, so a separate `fullSessionId` field
 carries the untruncated filename stem.
 
+**Amended after implementation:** the command actually used is
+`claude-vscode.primaryEditor.open`, not `claude-vscode.editor.open`. The latter runs
+`if (viewColumn !== ViewColumn.Active) setPreferredLocation("panel")` before revealing,
+and `setPreferredLocation` writes `claudeCode.preferredLocation` to the user's **global**
+settings. Passing only a session id leaves `viewColumn` undefined, so that write would
+fire on every click. `primaryEditor.open` calls the same `createPanel` with
+`ViewColumn.Active` and touches no settings.
+
 Two consequences drive the design:
 
 1. The command is **private, undocumented API**. It can disappear in any update, so every
