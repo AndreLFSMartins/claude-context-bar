@@ -19,6 +19,15 @@ VS Code marketplace auto-update cannot overwrite these changes.
 - Manual click-to-hide is removed, along with its auto-unhide-on-new-activity behaviour. Automatic
   hiding of idle sessions via `idleTimeout` is unchanged.
 
+### Known limitation
+- **Right after a window reload, clicking an item for a tab you have not visited yet opens a
+  duplicate tab instead of revealing the existing one.** VS Code restores webview panels lazily, and
+  the Claude Code extension's `deserializeWebviewPanel` restores a panel without its session id, so
+  the session is absent from its internal map until that tab first becomes visible. The reveal
+  command is fail-open: an unknown id creates a new panel, which then renders the same conversation.
+  Visiting the tab once repairs the mapping permanently. Nothing on this side can distinguish
+  "restored but not yet loaded" from "closed, so opening is correct" — the fix belongs upstream.
+
 ### Added
 - `onlyCurrentWindow` (default `true`) — show only sessions whose working directory sits inside
   this window's workspace folders. Comparison happens in Claude's encoded path space, requiring an

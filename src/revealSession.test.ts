@@ -57,8 +57,14 @@ describe('resolveClickAction', () => {
 });
 
 describe('exported constants', () => {
-    test('names the private Claude Code command exactly', () => {
-        assert.strictEqual(CLAUDE_REVEAL_COMMAND, 'claude-vscode.editor.open');
+    test('uses primaryEditor.open, the variant with no global-settings side effect', () => {
+        // claude-vscode.editor.open runs `if (viewColumn !== ViewColumn.Active)
+        // setPreferredLocation("panel")` BEFORE revealing, and that writes
+        // claudeCode.preferredLocation to the user's GLOBAL settings. We call the
+        // command with only a session id, so viewColumn is undefined and the write
+        // fires on every single click. primaryEditor.open reaches the same
+        // createPanel with ViewColumn.Active and never touches settings.
+        assert.strictEqual(CLAUDE_REVEAL_COMMAND, 'claude-vscode.primaryEditor.open');
     });
 
     test('names the IDE entrypoint value exactly', () => {

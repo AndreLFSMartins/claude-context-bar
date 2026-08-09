@@ -15,8 +15,20 @@
 /** `entrypoint` value written by Claude Code sessions running as a VS Code tab. */
 export const CLAUDE_IDE_ENTRYPOINT = 'claude-vscode';
 
-/** Private command of the Claude Code extension that reveals a session's panel. */
-export const CLAUDE_REVEAL_COMMAND = 'claude-vscode.editor.open';
+/**
+ * Private command of the Claude Code extension that reveals a session's panel.
+ *
+ * Deliberately NOT `claude-vscode.editor.open`, the obvious candidate. That one
+ * runs `if (viewColumn !== ViewColumn.Active) setPreferredLocation("panel")`
+ * before revealing anything, and `setPreferredLocation` writes
+ * `claudeCode.preferredLocation` to the user's GLOBAL settings. We pass only a
+ * session id, so `viewColumn` is undefined and the write would fire on every
+ * click — silently flipping the preference for anyone who uses the sidebar.
+ *
+ * `primaryEditor.open` reaches the same `createPanel` with `ViewColumn.Active`
+ * and touches no settings.
+ */
+export const CLAUDE_REVEAL_COMMAND = 'claude-vscode.primaryEditor.open';
 
 export type ClickAction =
     | { kind: 'reveal'; sessionId: string }
