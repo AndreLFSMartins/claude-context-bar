@@ -8,7 +8,10 @@ DEV-README.md
 INTERNAL-DEV-NOTES.md
 
 # IDE
-.vscode/
+# .vscode/* (not .vscode/) so the negations below can un-ignore specific
+# files — a bare .vscode/ prunes the whole directory from traversal before
+# git ever evaluates per-file negation patterns inside it.
+.vscode/*
 !.vscode/launch.json
 !.vscode/tasks.json
 
