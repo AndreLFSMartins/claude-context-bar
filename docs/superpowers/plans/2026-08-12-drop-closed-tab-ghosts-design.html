@@ -145,49 +145,46 @@ summary:hover{color:var(--accent)}
   <a href="#non-goals">Non-goals</a>
   <a href="#evidence">Evidence</a>
   <a href="#design">Design</a>
-  <a href="#design-openTabMatch" class="lvl-3">src/openTabMatch.ts — new pure module</a>
-  <a href="#design-extension" class="lvl-3">src/extension.ts</a>
+  <a href="#src-openTabMatch-ts" class="lvl-3">src/openTabMatch.ts — new pure module</a>
+  <a href="#src-extension-ts" class="lvl-3">src/extension.ts</a>
   <a href="#testing">Testing</a>
   <a href="#risks">Risks</a>
+  <a href="#amendment">Amendment: detectionLooksReliable checked the wrong session</a>
 </nav>
 <main>
-<p class="eyebrow">Spec · 2026-08-12</p>
-<p class="statement">A <em>status bar item</em> lingering after its tab closes now looks like an active session because it displays the user's last prompt as its label. Fix this by detecting when a session's tab has been closed and removing the stale item immediately, instead of waiting for the idle timeout.</p>
+<div class="meta">
+  <span class="eyebrow">Specification</span>
+  <span class="eyebrow">Status: approved</span>
+  <span class="eyebrow">2026-08-12</span>
+</div>
 
-<section>
-  <h2 id="problem">Problem</h2>
+<h2 id="problem">Problem</h2>
 
-  <p>A status bar item is only tied to a <code>.jsonl</code> session file, not to a real, currently-open Claude Code tab. <code>findActiveSessions</code> treats any file modified within <code>idleTimeout</code> (default 180s) as "active," with no check that its tab still exists.</p>
+<p>A status bar item is only tied to a <code>.jsonl</code> session file, not to a real, currently-open Claude Code tab. <code>findActiveSessions</code> treats any file modified within <code>idleTimeout</code> (default 180s) as "active," with no check that its tab still exists.</p>
 
-  <p>When a tab is closed (or replaced by a new chat), its file keeps a recent <code>mtime</code> and the item lingers for up to 3 minutes. Since <a href="../../.." title="commit fd0d331">fd0d331</a> started labeling items with the session's last prompt instead of the project name, that lingering item now shows a real, recognizable piece of text — one of the user's own past messages — making it look like the current tab's name when it belongs to a tab that's already gone.</p>
+<p>When a tab is closed (or replaced by a new chat), its file keeps a recent <code>mtime</code> and the item lingers for up to 3 minutes. Since <a href="https://github.com/andrema2/claude-context-bar/commit/fd0d331">fd0d331</a> started labeling items with the session's last prompt instead of the project name, that lingering item now shows a real, recognizable piece of text — one of the user's own past messages — making it look like the current tab's name when it belongs to a tab that's already gone.</p>
 
-  <p><strong>Verified in this workspace:</strong> a closed tab's session file (<code>35f9dcdc…jsonl</code>, mtime 4 min old) was still inside the 180s window, while the VS Code editor state (<code>state.vscdb</code>, <code>memento/workbench.parts.editor</code>) showed only one <code>claudeVSCodePanel</code> tab open, titled from a different, newer session (<code>4d71f31b…jsonl</code>).</p>
+<p>Verified in this workspace: a closed tab's session file (<code>35f9dcdc…jsonl</code>, mtime 4 min old) was still inside the 180s window, while the VS Code editor state (<code>state.vscdb</code>, <code>memento/workbench.parts.editor</code>) showed only one <code>claudeVSCodePanel</code> tab open, titled from a different, newer session (<code>4d71f31b…jsonl</code>).</p>
 
-  <p>The previous spec (<a href="2026-08-09-reveal-session-on-click-design.md">2026-08-09</a>) explicitly accepted this as a risk when it was just a stale click target. It stops being acceptable now that the stale item's <em>label</em> reads as a real message.</p>
-</section>
+<p class="statement">The previous spec (<a href="2026-08-09-reveal-session-on-click-design.md">2026-08-09</a>) explicitly accepted this as a risk when it was just a stale click target. It stops being acceptable now that the stale item's <em>label</em> reads as a real message.</p>
 
-<section>
-  <h2 id="goal">Goal</h2>
+<h2 id="goal">Goal</h2>
 
-  <p>A session whose Claude Code tab has been closed drops out of the status bar promptly, instead of waiting out <code>idleTimeout</code>.</p>
-</section>
+<p>A session whose Claude Code tab has been closed drops out of the status bar promptly, instead of waiting out <code>idleTimeout</code>.</p>
 
-<section>
-  <h2 id="non-goals">Non-goals</h2>
+<h2 id="non-goals">Non-goals</h2>
 
-  <ul>
-    <li><strong>Sessions from other windows / CLI / SDK / Desktop.</strong> <code>vscode.window.tabGroups</code> only sees tabs in the current window, so this only applies when <code>onlyCurrentWindow</code> is <code>true</code> (the default). When it's <code>false</code>, behavior is unchanged — matches the existing scoping semantics of that setting.</li>
-    <li><strong>Replacing <code>idleTimeout</code>.</strong> It stays as the fallback for everything this new check can't observe (other windows, and the "detection looks broken" escape hatch below).</li>
-    <li><strong>A perfect open/closed signal.</strong> There is no public API exposing session IDs for open Claude Code panels (<code>sessionPanels</code> is a private field of the extension). Matching is by tab title text, which is a best-effort heuristic, not an identity.</li>
-  </ul>
-</section>
+<ul>
+  <li><strong>Sessions from other windows / CLI / SDK / Desktop.</strong> <code>vscode.window.tabGroups</code> only sees tabs in the current window, so this only applies when <code>onlyCurrentWindow</code> is <code>true</code> (the default). When it's <code>false</code>, behavior is unchanged — matches the existing scoping semantics of that setting.</li>
+  <li><strong>Replacing <code>idleTimeout</code>.</strong> It stays as the fallback for everything this new check can't observe (other windows, and the "detection looks broken" escape hatch below).</li>
+  <li><strong>A perfect open/closed signal.</strong> There is no public API exposing session IDs for open Claude Code panels (<code>sessionPanels</code> is a private field of the extension). Matching is by tab title text, which is a best-effort heuristic, not an identity.</li>
+</ul>
 
-<section>
-  <h2 id="evidence">Evidence</h2>
+<h2 id="evidence">Evidence</h2>
 
-  <p>Read <code>extension.js</code> inside the installed Claude Code extension (<code>anthropic.claude-code-2.1.228-darwin-arm64</code>):</p>
+<p>Read <code>extension.js</code> inside the installed Claude Code extension (<code>anthropic.claude-code-2.1.228-darwin-arm64</code>):</p>
 
-  <pre><code>Pt.window.tabGroups.onDidChangeTabs((d) =&gt; {
+<pre><code class="language-js">Pt.window.tabGroups.onDidChangeTabs((d) =&gt; {
   if (d.closed.some((f) =&gt;
     !(f.input instanceof Pt.TabInputWebview &amp;&amp; f.input.viewType.includes("claudeVSCodePanel"))
   )) ...
@@ -199,102 +196,99 @@ Pt.window.tabGroups.all.find((c) =&gt;
   )
 )</code></pre>
 
-  <p>This is Claude Code detecting its own panels — confirms the exact <code>viewType</code> check to use. Panel titles come from a <code>rename_tab</code> message driven by the last prompt (also read from the bundle), and were confirmed in <code>state.vscdb</code> to match the <code>.jsonl</code>'s <code>last-prompt</code> entry, truncated with a trailing <code>…</code>.</p>
-</section>
+<p>This is Claude Code detecting its own panels — confirms the exact <code>viewType</code> check to use. Panel titles come from a <code>rename_tab</code> message driven by the last prompt (also read from the bundle), and were confirmed in <code>state.vscdb</code> to match the <code>.jsonl</code>'s <code>last-prompt</code> entry, truncated with a trailing <code>…</code>.</p>
 
-<section>
-  <h2 id="design">Design</h2>
+<h2 id="design">Design</h2>
 
-  <section>
-    <h3 id="design-openTabMatch">src/openTabMatch.ts — new pure module</h3>
+<h3 id="src-openTabMatch-ts"><code>src/openTabMatch.ts</code> — new pure module</h3>
 
-    <p>Follows the <code>tabLabel.ts</code> / <code>contextLimit.ts</code> pattern: no <code>vscode</code> import, testable under <code>node --test</code>.</p>
+<p>Follows the <code>tabLabel.ts</code> / <code>contextLimit.ts</code> pattern: no <code>vscode</code> import, testable under <code>node --test</code>.</p>
 
-    <pre><code>export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean
+<pre><code class="language-ts">export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean
 
 export function detectionLooksReliable(
     sessions: { lastPrompt: string; lastUpdated: Date }[],
     openTabTitles: string[]
 ): boolean</code></pre>
 
-    <p><strong><code>hasMatchingOpenTab</code>:</strong> collapses <code>lastPrompt</code> the same way <code>buildItemLabel</code> does (whitespace collapsed, trimmed — that helper moves to a shared <code>collapsePrompt</code> export in <code>tabLabel.ts</code> so both modules use one implementation). Empty prompt → <code>true</code> (nothing to correlate yet, never treat a fresh tab as closed). Otherwise, strips a trailing <code>…</code> off each open tab title and checks a prefix match in either direction (title is a truncation of the prompt, or — rare, short prompt — the whole prompt fit untruncated).</p>
+<p><strong><code>hasMatchingOpenTab</code>:</strong> collapses <code>lastPrompt</code> the same way <code>buildItemLabel</code> does (whitespace collapsed, trimmed — that helper moves to a shared <code>collapsePrompt</code> export in <code>tabLabel.ts</code> so both modules use one implementation). Empty prompt → <code>true</code> (nothing to correlate yet, never treat a fresh tab as closed). Otherwise, strips a trailing <code>…</code> off each open tab title and checks a prefix match in either direction (title is a truncation of the prompt, or — rare, short prompt — the whole prompt fit untruncated).</p>
 
-    <p><strong><code>detectionLooksReliable</code>:</strong> a safety net. The freshest session by <code>lastUpdated</code> is almost certainly the tab the user is looking at right now — if it <em>also</em> doesn't match any open tab, the <code>viewType</code> check itself is probably broken (Claude Code renamed it in a future release), not reality. In that case the caller skips the new filter entirely for this refresh and falls back to plain <code>idleTimeout</code>, rather than risking hiding every session with a recorded prompt. Empty session list → <code>true</code> (nothing to protect against).</p>
-  </section>
+<p><strong><code>detectionLooksReliable</code>:</strong> a safety net. The freshest session by <code>lastUpdated</code> is almost certainly the tab the user is looking at right now — if it <em>also</em> doesn't match any open tab, the <code>viewType</code> check itself is probably broken (Claude Code renamed it in a future release), not reality. In that case the caller skips the new filter entirely for this refresh and falls back to plain <code>idleTimeout</code>, rather than risking hiding every session with a recorded prompt. Empty session list → <code>true</code> (nothing to protect against).</p>
 
-  <section>
-    <h3 id="design-extension">src/extension.ts</h3>
+<h3 id="src-extension-ts"><code>src/extension.ts</code></h3>
 
-    <ul>
-      <li><code>getOpenClaudeTabTitles(): string[]</code> — reads <code>vscode.window.tabGroups.all</code>, keeps tabs where <code>tab.input instanceof vscode.TabInputWebview &amp;&amp; tab.input.viewType.includes('claudeVSCodePanel')</code>, returns their <code>tab.label</code>.</li>
-      <li>In <code>findActiveSessions</code>, right after the <code>sessions</code> array is built and only when <code>onlyCurrentWindow</code> is <code>true</code>: compute <code>openTabTitles</code> once, and if <code>detectionLooksReliable(sessions, openTabTitles)</code>, drop any session where <code>!hasMatchingOpenTab(session.lastPrompt, openTabTitles)</code> before the project-grouping / supersession pass.</li>
-    </ul>
-  </section>
-</section>
+<ul>
+  <li><code>getOpenClaudeTabTitles(): string[]</code> — reads <code>vscode.window.tabGroups.all</code>, keeps tabs where <code>tab.input instanceof vscode.TabInputWebview &amp;&amp; tab.input.viewType.includes('claudeVSCodePanel')</code>, returns their <code>tab.label</code>.</li>
+  <li>In <code>findActiveSessions</code>, right after the <code>sessions</code> array is built and only when <code>onlyCurrentWindow</code> is <code>true</code>: compute <code>openTabTitles</code> once, and if <code>detectionLooksReliable(sessions, openTabTitles)</code>, drop any session where <code>!hasMatchingOpenTab(session.lastPrompt, openTabTitles)</code> before the project-grouping / supersession pass.</li>
+</ul>
 
-<section>
-  <h2 id="testing">Testing</h2>
+<h2 id="testing">Testing</h2>
 
-  <p><strong>Unit tests:</strong> <code>src/openTabMatch.test.ts</code></p>
+<p><code>src/openTabMatch.test.ts</code>:</p>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Case</th>
-        <th>Expected</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Tab title is the ellipsis-truncated prefix of <code>lastPrompt</code></td>
-        <td><code>true</code></td>
-      </tr>
-      <tr>
-        <td>Tab title equals <code>lastPrompt</code> untruncated (short prompt, no <code>…</code>)</td>
-        <td><code>true</code></td>
-      </tr>
-      <tr>
-        <td>Tab title matches a different, unrelated prompt</td>
-        <td><code>false</code> (unless another title in the list matches)</td>
-      </tr>
-      <tr>
-        <td><code>lastPrompt</code> empty</td>
-        <td><code>true</code> (can't correlate — don't claim closed)</td>
-      </tr>
-      <tr>
-        <td><code>openTabTitles</code> empty, <code>lastPrompt</code> non-empty</td>
-        <td><code>false</code></td>
-      </tr>
-      <tr>
-        <td><code>detectionLooksReliable</code>: freshest session matches an open title</td>
-        <td><code>true</code></td>
-      </tr>
-      <tr>
-        <td><code>detectionLooksReliable</code>: freshest session's prompt matches nothing open</td>
-        <td><code>false</code></td>
-      </tr>
-      <tr>
-        <td><code>detectionLooksReliable</code>: freshest session has empty <code>lastPrompt</code></td>
-        <td><code>true</code> (nothing to check yet, don't distrust)</td>
-      </tr>
-      <tr>
-        <td><code>detectionLooksReliable</code>: empty session list</td>
-        <td><code>true</code></td>
-      </tr>
-    </tbody>
-  </table>
+<table>
+  <thead>
+    <tr>
+      <th>Case</th>
+      <th>Expected</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Tab title is the ellipsis-truncated prefix of <code>lastPrompt</code></td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td>Tab title equals <code>lastPrompt</code> untruncated (short prompt, no <code>…</code>)</td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td>Tab title matches a different, unrelated prompt</td>
+      <td><code>false</code> (unless another title in the list matches)</td>
+    </tr>
+    <tr>
+      <td><code>lastPrompt</code> empty</td>
+      <td><code>true</code> (can't correlate — don't claim closed)</td>
+    </tr>
+    <tr>
+      <td><code>openTabTitles</code> empty, <code>lastPrompt</code> non-empty</td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>detectionLooksReliable</code>: freshest session matches an open title</td>
+      <td><code>true</code></td>
+    </tr>
+    <tr>
+      <td><code>detectionLooksReliable</code>: freshest session's prompt matches nothing open</td>
+      <td><code>false</code></td>
+    </tr>
+    <tr>
+      <td><code>detectionLooksReliable</code>: freshest session has empty <code>lastPrompt</code></td>
+      <td><code>true</code> (nothing to check yet, don't distrust)</td>
+    </tr>
+    <tr>
+      <td><code>detectionLooksReliable</code>: empty session list</td>
+      <td><code>true</code></td>
+    </tr>
+  </tbody>
+</table>
 
-  <p><strong>Manual gate</strong> (required, per the debugging skill — this class of bug only shows up live): in the Extension Development Host, open two Claude Code tabs for the same project, send a message in each, close one, and confirm its status bar item disappears well inside <code>idleTimeout</code> rather than lingering ~3 minutes.</p>
-</section>
+<div class="callout warn">
+  <strong>Manual gate (required, per the debugging skill — this class of bug only shows up live):</strong> in the Extension Development Host, open two Claude Code tabs for the same project, send a message in each, close one, and confirm its status bar item disappears well inside <code>idleTimeout</code> rather than lingering ~3 minutes.
+</div>
 
-<section>
-  <h2 id="risks">Risks</h2>
+<h2 id="risks">Risks</h2>
 
-  <ul>
-    <li><strong>Prefix-match is a heuristic, not an identity:</strong> two tabs whose prompts share a long common prefix could cross-match. Only used for inclusion (never for choosing which item shows which label), so a false match just means the filter under-corrects for one case, not that an item shows wrong content it wasn't already going to show.</li>
-    <li><strong>Future <code>viewType</code> changes:</strong> if Claude Code changes <code>viewType</code> in a future release, <code>detectionLooksReliable</code> should catch it (the freshest session stops matching) and the feature quietly no-ops back to <code>idleTimeout</code>-only. Not proven under a real future version — accepted, since the fallback direction is safe (worst case: today's existing behavior, not a new one).</li>
-  </ul>
-</section>
+<ul>
+  <li><strong>Prefix-match is a heuristic, not an identity:</strong> two tabs whose prompts share a long common prefix could cross-match. Only used for inclusion (never for choosing which item shows which label), so a false match just means the filter under-corrects for one case, not that an item shows wrong content it wasn't already going to show.</li>
+  <li><strong>Future <code>viewType</code> changes:</strong> If Claude Code changes <code>viewType</code> in a future release, <code>detectionLooksReliable</code> should catch it (no session with a prompt matches any open tab) and the feature quietly no-ops back to <code>idleTimeout</code>-only. Not proven under a real future version — accepted, since the fallback direction is safe (worst case: today's existing behavior, not a new one).</li>
+</ul>
+
+<h2 id="amendment">Amendment: <code>detectionLooksReliable</code> checked the wrong session</h2>
+
+<p>Manual gate turned up a real bug in the first implementation. It checked only the most-recently-updated session — but closing the tab you were just using makes <em>that</em> session the freshest one on disk, and it correctly stops matching (its tab really is gone). The original heuristic read that as "the whole mechanism is broken" and disabled the filter, so every stale ghost that had just been correctly hidden flooded back the moment you closed any tab — the single most common way to trigger this feature at all.</p>
+
+<p>Fixed to trust the mechanism if <em>any</em> session with a recorded prompt matches <em>some</em> open tab, rather than requiring it of the freshest one specifically. Zero open tabs detected stays untrustworthy (ambiguous between "really none open" and "detection broken"); a session with no recorded prompt is excluded from the check since <code>hasMatchingOpenTab</code> passes it vacuously either way and so proves nothing about whether matching works. <code>detectionLooksReliable</code>'s signature dropped the now-unused <code>lastUpdated</code> field.</p>
   <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
   <div class="signature">
     <div class="name">rich-doc</div>
@@ -303,4 +297,4 @@ export function detectionLooksReliable(
 </main>
 </body>
 </html>
-<!-- rich-doc-src-sha256:066990295e5793ae1f14190734250abde6e40d19c6a75cf340018d0496a5e4b2 -->
+<!-- rich-doc-src-sha256:e285335e995de61cb01c8ad338b47076a6f90b7ace464619ee649865d6d30309 -->
