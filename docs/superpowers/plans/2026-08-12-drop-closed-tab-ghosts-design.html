@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop status bar items for tabs that are already closed</title>
+<style>
+/* rich-doc design system — Anthropic brand, document-oriented.
+   Light paper/ink, Lora italic display, Poppins body, system mono.
+   Hard rules honored: ONE accent per piece, no gradients, no drop-shadow,
+   monogram always ink, hairlines 1px/2px only. Inline this whole file into a
+   single <style>. Fonts come from Google Fonts (the only external request);
+   everything degrades to system serif/sans/mono offline. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root{
+  /* Anthropic brand */
+  --paper:#faf9f5; --ink:#141413; --stone:#b0aea5; --hairline:#e8e6dc;
+  --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+  --accent:var(--orange);            /* fixed primary accent */
+  --font-head:"Poppins",Arial,sans-serif;
+  --font-body:"Lora",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --lh-body:1.55; --lh-title:1.12; --maxw:1140px;
+}
+[data-mode="dark"]{--paper:#141413; --ink:#faf9f5; --stone:#8a8780; --hairline:#2a2926}
+
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/var(--lh-body) var(--font-body);
+  display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+
+/* ---- TOC sidebar ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  border-right:1px solid var(--hairline);padding:46px 30px}
+nav.toc .eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);margin-bottom:14px}
+nav.toc .doc-title{font:400 italic 30px/1.1 var(--font-body);
+  letter-spacing:-.005em;margin:0 0 26px;color:var(--ink)}
+nav.toc a{display:block;color:var(--stone);text-decoration:none;font-size:14.5px;font-family:var(--font-head);
+  padding:5px 0;border:none}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.lvl-3{padding-left:16px;font-size:13.5px}
+
+/* ---- main column ---- */
+main{padding:56px 72px 140px;max-width:var(--maxw)}
+.eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
+.meta{font:400 13px/1.4 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+h2{font:600 30px/var(--lh-title) var(--font-head);letter-spacing:-.015em;margin:56px 0 16px;
+  padding-bottom:10px;border-bottom:1px solid var(--hairline);scroll-margin-top:24px}
+h2:first-of-type{margin-top:0}
+/* anchor word inside a title → Lora italic, accent */
+h2 em,.anchor{font:400 italic 1.1em/1 var(--font-body);color:var(--accent);
+  letter-spacing:-.005em}
+h3{font:600 20px/1.2 var(--font-head);margin:34px 0 10px;scroll-margin-top:24px}
+p,li{color:var(--ink)} strong{font-weight:700}
+a{color:var(--accent);text-underline-offset:2px}
+a.backlink{float:right;font:400 12px/1.6 var(--font-head);color:var(--stone);text-decoration:none}
+a.backlink:hover{color:var(--accent)}
+
+/* pull statement — Lora italic protagonist */
+.statement{font:400 italic 26px/1.25 var(--font-body);
+  letter-spacing:-.01em;color:var(--ink);margin:26px 0;max-width:24em;text-wrap:pretty}
+
+/* ---- callout: single accent, hairline, no shadow ---- */
+.callout{border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  background:transparent;padding:14px 20px;margin:20px 0}
+.callout .label{font:500 11px/1 var(--font-head);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--accent);display:block;margin-bottom:8px}
+.callout.warn .label::after{content:" — watch out"}
+
+/* ---- chips ---- */
+.chip{display:inline-block;font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 9px;border:1px solid var(--hairline);color:var(--stone);margin:0 5px 5px 0}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+
+/* ---- tables: hairlines + mono headers, no heavy fills ---- */
+table{border-collapse:collapse;width:100%;margin:20px 0;font-size:15px;border:1px solid var(--hairline)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--hairline)}
+th{font:500 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+tr:last-child td{border-bottom:none}
+td .yes{color:var(--accent);font-weight:700} td .no{color:var(--ink);font-weight:700}
+
+/* ---- figure / diagram ---- */
+figure{margin:26px 0;padding:22px;border:1px solid var(--hairline);text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{margin-top:12px;font:400 13px/1.4 var(--font-head);color:var(--stone);
+  text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- code / details ---- */
+code{font:14px var(--font-mono);color:var(--accent)}
+pre{border:1px solid var(--hairline);padding:16px;overflow-x:auto;font:13px/1.6 var(--font-mono);color:var(--ink)}
+pre code{color:inherit}
+details{border:1px solid var(--hairline);padding:4px 18px;margin:16px 0}
+summary{cursor:pointer;font:500 14px/1 var(--font-head);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--stone);padding:12px 0}
+summary:hover{color:var(--accent)}
+
+/* ---- signature: monogram (always ink) + spectrum bar ---- */
+.spectrum{display:flex;height:4px;margin:40px 0 22px}
+.spectrum span{flex:1}
+.spectrum .s1{background:var(--orange)} .spectrum .s2{background:var(--blue)} .spectrum .s3{background:var(--green)}
+.signature{display:flex;flex-direction:column;gap:3px;color:var(--stone);
+  border-left:2px solid var(--accent);padding-left:16px}
+.signature .name{font:400 italic 18px/1 var(--font-body);color:var(--ink)}
+.signature .role{font:400 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.06em;color:var(--stone)}
+
+/* ---- phase color-coding: thin left bar, accent cycles ---- */
+.phase{display:flex;align-items:baseline;gap:10px;font:500 16px/1.4 var(--font-head);
+  padding:7px 0 7px 13px;border-left:3px solid var(--stone);margin:6px 0}
+.phase .pn{font:600 10px/1 var(--font-head);letter-spacing:.1em;text-transform:uppercase;color:var(--stone)}
+.phase.p-o{border-color:var(--orange)} .phase.p-b{border-color:var(--blue)} .phase.p-g{border-color:var(--green)}
+
+/* ---- metrics row: large numbers ---- */
+.metrics{display:flex;gap:28px;margin:24px 0;padding:18px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.metrics .metric{flex:0 1 auto}
+.metrics .big{font:700 34px/1 var(--font-head);color:var(--orange)}
+.metrics .label{font:500 11px/1 var(--font-head);letter-spacing:.08em;text-transform:uppercase;color:var(--stone);margin-top:6px}
+
+/* ---- status chips: done / active / todo ---- */
+.schip{display:inline-block;font:600 11px/1 var(--font-head);letter-spacing:.05em;text-transform:uppercase;
+  padding:5px 10px;border-radius:20px;margin:0 5px 5px 0}
+.schip.done{background:var(--green);color:#fff}
+.schip.active{background:var(--orange);color:#fff}
+.schip.todo{background:var(--hairline);color:var(--stone)}
+
+/* ---- progress bar ---- */
+.progress{margin:18px 0}
+.progress .bar{height:8px;border-radius:6px;background:var(--hairline);overflow:hidden}
+.progress .fill{height:100%;background:var(--orange)}
+.progress .label{font:500 12px/1 var(--font-head);color:var(--stone);margin-top:6px}
+
+@media(max-width:880px){
+  body{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--hairline)}
+  main{padding:32px 24px 90px}
+}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="eyebrow">[ SPEC ]</div>
+  <div class="doc-title">Drop status bar items for tabs that are already closed</div>
+  <a href="#problem">Problem</a>
+  <a href="#goal">Goal</a>
+  <a href="#non-goals">Non-goals</a>
+  <a href="#evidence">Evidence</a>
+  <a href="#design">Design</a>
+  <a href="#design-openTabMatch" class="lvl-3">src/openTabMatch.ts — new pure module</a>
+  <a href="#design-extension" class="lvl-3">src/extension.ts</a>
+  <a href="#testing">Testing</a>
+  <a href="#risks">Risks</a>
+</nav>
+<main>
+<p class="eyebrow">Spec · 2026-08-12</p>
+<p class="statement">A <em>status bar item</em> lingering after its tab closes now looks like an active session because it displays the user's last prompt as its label. Fix this by detecting when a session's tab has been closed and removing the stale item immediately, instead of waiting for the idle timeout.</p>
+
+<section>
+  <h2 id="problem">Problem</h2>
+
+  <p>A status bar item is only tied to a <code>.jsonl</code> session file, not to a real, currently-open Claude Code tab. <code>findActiveSessions</code> treats any file modified within <code>idleTimeout</code> (default 180s) as "active," with no check that its tab still exists.</p>
+
+  <p>When a tab is closed (or replaced by a new chat), its file keeps a recent <code>mtime</code> and the item lingers for up to 3 minutes. Since <a href="../../.." title="commit fd0d331">fd0d331</a> started labeling items with the session's last prompt instead of the project name, that lingering item now shows a real, recognizable piece of text — one of the user's own past messages — making it look like the current tab's name when it belongs to a tab that's already gone.</p>
+
+  <p><strong>Verified in this workspace:</strong> a closed tab's session file (<code>35f9dcdc…jsonl</code>, mtime 4 min old) was still inside the 180s window, while the VS Code editor state (<code>state.vscdb</code>, <code>memento/workbench.parts.editor</code>) showed only one <code>claudeVSCodePanel</code> tab open, titled from a different, newer session (<code>4d71f31b…jsonl</code>).</p>
+
+  <p>The previous spec (<a href="2026-08-09-reveal-session-on-click-design.md">2026-08-09</a>) explicitly accepted this as a risk when it was just a stale click target. It stops being acceptable now that the stale item's <em>label</em> reads as a real message.</p>
+</section>
+
+<section>
+  <h2 id="goal">Goal</h2>
+
+  <p>A session whose Claude Code tab has been closed drops out of the status bar promptly, instead of waiting out <code>idleTimeout</code>.</p>
+</section>
+
+<section>
+  <h2 id="non-goals">Non-goals</h2>
+
+  <ul>
+    <li><strong>Sessions from other windows / CLI / SDK / Desktop.</strong> <code>vscode.window.tabGroups</code> only sees tabs in the current window, so this only applies when <code>onlyCurrentWindow</code> is <code>true</code> (the default). When it's <code>false</code>, behavior is unchanged — matches the existing scoping semantics of that setting.</li>
+    <li><strong>Replacing <code>idleTimeout</code>.</strong> It stays as the fallback for everything this new check can't observe (other windows, and the "detection looks broken" escape hatch below).</li>
+    <li><strong>A perfect open/closed signal.</strong> There is no public API exposing session IDs for open Claude Code panels (<code>sessionPanels</code> is a private field of the extension). Matching is by tab title text, which is a best-effort heuristic, not an identity.</li>
+  </ul>
+</section>
+
+<section>
+  <h2 id="evidence">Evidence</h2>
+
+  <p>Read <code>extension.js</code> inside the installed Claude Code extension (<code>anthropic.claude-code-2.1.228-darwin-arm64</code>):</p>
+
+  <pre><code>Pt.window.tabGroups.onDidChangeTabs((d) =&gt; {
+  if (d.closed.some((f) =&gt;
+    !(f.input instanceof Pt.TabInputWebview &amp;&amp; f.input.viewType.includes("claudeVSCodePanel"))
+  )) ...
+})
+...
+Pt.window.tabGroups.all.find((c) =&gt;
+  c.tabs.every((l) =&gt;
+    l.input instanceof Pt.TabInputWebview ? l.input.viewType.includes("claudeVSCodePanel") : false
+  )
+)</code></pre>
+
+  <p>This is Claude Code detecting its own panels — confirms the exact <code>viewType</code> check to use. Panel titles come from a <code>rename_tab</code> message driven by the last prompt (also read from the bundle), and were confirmed in <code>state.vscdb</code> to match the <code>.jsonl</code>'s <code>last-prompt</code> entry, truncated with a trailing <code>…</code>.</p>
+</section>
+
+<section>
+  <h2 id="design">Design</h2>
+
+  <section>
+    <h3 id="design-openTabMatch">src/openTabMatch.ts — new pure module</h3>
+
+    <p>Follows the <code>tabLabel.ts</code> / <code>contextLimit.ts</code> pattern: no <code>vscode</code> import, testable under <code>node --test</code>.</p>
+
+    <pre><code>export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean
+
+export function detectionLooksReliable(
+    sessions: { lastPrompt: string; lastUpdated: Date }[],
+    openTabTitles: string[]
+): boolean</code></pre>
+
+    <p><strong><code>hasMatchingOpenTab</code>:</strong> collapses <code>lastPrompt</code> the same way <code>buildItemLabel</code> does (whitespace collapsed, trimmed — that helper moves to a shared <code>collapsePrompt</code> export in <code>tabLabel.ts</code> so both modules use one implementation). Empty prompt → <code>true</code> (nothing to correlate yet, never treat a fresh tab as closed). Otherwise, strips a trailing <code>…</code> off each open tab title and checks a prefix match in either direction (title is a truncation of the prompt, or — rare, short prompt — the whole prompt fit untruncated).</p>
+
+    <p><strong><code>detectionLooksReliable</code>:</strong> a safety net. The freshest session by <code>lastUpdated</code> is almost certainly the tab the user is looking at right now — if it <em>also</em> doesn't match any open tab, the <code>viewType</code> check itself is probably broken (Claude Code renamed it in a future release), not reality. In that case the caller skips the new filter entirely for this refresh and falls back to plain <code>idleTimeout</code>, rather than risking hiding every session with a recorded prompt. Empty session list → <code>true</code> (nothing to protect against).</p>
+  </section>
+
+  <section>
+    <h3 id="design-extension">src/extension.ts</h3>
+
+    <ul>
+      <li><code>getOpenClaudeTabTitles(): string[]</code> — reads <code>vscode.window.tabGroups.all</code>, keeps tabs where <code>tab.input instanceof vscode.TabInputWebview &amp;&amp; tab.input.viewType.includes('claudeVSCodePanel')</code>, returns their <code>tab.label</code>.</li>
+      <li>In <code>findActiveSessions</code>, right after the <code>sessions</code> array is built and only when <code>onlyCurrentWindow</code> is <code>true</code>: compute <code>openTabTitles</code> once, and if <code>detectionLooksReliable(sessions, openTabTitles)</code>, drop any session where <code>!hasMatchingOpenTab(session.lastPrompt, openTabTitles)</code> before the project-grouping / supersession pass.</li>
+    </ul>
+  </section>
+</section>
+
+<section>
+  <h2 id="testing">Testing</h2>
+
+  <p><strong>Unit tests:</strong> <code>src/openTabMatch.test.ts</code></p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Case</th>
+        <th>Expected</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Tab title is the ellipsis-truncated prefix of <code>lastPrompt</code></td>
+        <td><code>true</code></td>
+      </tr>
+      <tr>
+        <td>Tab title equals <code>lastPrompt</code> untruncated (short prompt, no <code>…</code>)</td>
+        <td><code>true</code></td>
+      </tr>
+      <tr>
+        <td>Tab title matches a different, unrelated prompt</td>
+        <td><code>false</code> (unless another title in the list matches)</td>
+      </tr>
+      <tr>
+        <td><code>lastPrompt</code> empty</td>
+        <td><code>true</code> (can't correlate — don't claim closed)</td>
+      </tr>
+      <tr>
+        <td><code>openTabTitles</code> empty, <code>lastPrompt</code> non-empty</td>
+        <td><code>false</code></td>
+      </tr>
+      <tr>
+        <td><code>detectionLooksReliable</code>: freshest session matches an open title</td>
+        <td><code>true</code></td>
+      </tr>
+      <tr>
+        <td><code>detectionLooksReliable</code>: freshest session's prompt matches nothing open</td>
+        <td><code>false</code></td>
+      </tr>
+      <tr>
+        <td><code>detectionLooksReliable</code>: freshest session has empty <code>lastPrompt</code></td>
+        <td><code>true</code> (nothing to check yet, don't distrust)</td>
+      </tr>
+      <tr>
+        <td><code>detectionLooksReliable</code>: empty session list</td>
+        <td><code>true</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <p><strong>Manual gate</strong> (required, per the debugging skill — this class of bug only shows up live): in the Extension Development Host, open two Claude Code tabs for the same project, send a message in each, close one, and confirm its status bar item disappears well inside <code>idleTimeout</code> rather than lingering ~3 minutes.</p>
+</section>
+
+<section>
+  <h2 id="risks">Risks</h2>
+
+  <ul>
+    <li><strong>Prefix-match is a heuristic, not an identity:</strong> two tabs whose prompts share a long common prefix could cross-match. Only used for inclusion (never for choosing which item shows which label), so a false match just means the filter under-corrects for one case, not that an item shows wrong content it wasn't already going to show.</li>
+    <li><strong>Future <code>viewType</code> changes:</strong> if Claude Code changes <code>viewType</code> in a future release, <code>detectionLooksReliable</code> should catch it (the freshest session stops matching) and the feature quietly no-ops back to <code>idleTimeout</code>-only. Not proven under a real future version — accepted, since the fallback direction is safe (worst case: today's existing behavior, not a new one).</li>
+  </ul>
+</section>
+  <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+  <div class="signature">
+    <div class="name">rich-doc</div>
+    <div class="role">superpowers companion · Anthropic brand</div>
+  </div>
+</main>
+</body>
+</html>
+<!-- rich-doc-src-sha256:066990295e5793ae1f14190734250abde6e40d19c6a75cf340018d0496a5e4b2 -->

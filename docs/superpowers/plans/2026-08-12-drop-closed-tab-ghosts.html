@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drop Closed-Tab Ghosts Implementation Plan</title>
+<style>
+/* rich-doc design system — Anthropic brand, document-oriented.
+   Light paper/ink, Lora italic display, Poppins body, system mono.
+   Hard rules honored: ONE accent per piece, no gradients, no drop-shadow,
+   monogram always ink, hairlines 1px/2px only. Inline this whole file into a
+   single <style>. Fonts come from Google Fonts (the only external request);
+   everything degrades to system serif/sans/mono offline. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root{
+  /* Anthropic brand */
+  --paper:#faf9f5; --ink:#141413; --stone:#b0aea5; --hairline:#e8e6dc;
+  --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+  --accent:var(--orange);            /* fixed primary accent */
+  --font-head:"Poppins",Arial,sans-serif;
+  --font-body:"Lora",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --lh-body:1.55; --lh-title:1.12; --maxw:1140px;
+}
+[data-mode="dark"]{--paper:#141413; --ink:#faf9f5; --stone:#8a8780; --hairline:#2a2926}
+
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/var(--lh-body) var(--font-body);
+  display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+
+/* ---- TOC sidebar ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  border-right:1px solid var(--hairline);padding:46px 30px}
+nav.toc .eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);margin-bottom:14px}
+nav.toc .doc-title{font:400 italic 30px/1.1 var(--font-body);
+  letter-spacing:-.005em;margin:0 0 26px;color:var(--ink)}
+nav.toc a{display:block;color:var(--stone);text-decoration:none;font-size:14.5px;font-family:var(--font-head);
+  padding:5px 0;border:none}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.lvl-3{padding-left:16px;font-size:13.5px}
+
+/* ---- main column ---- */
+main{padding:56px 72px 140px;max-width:var(--maxw)}
+.eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
+.meta{font:400 13px/1.4 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+h2{font:600 30px/var(--lh-title) var(--font-head);letter-spacing:-.015em;margin:56px 0 16px;
+  padding-bottom:10px;border-bottom:1px solid var(--hairline);scroll-margin-top:24px}
+h2:first-of-type{margin-top:0}
+/* anchor word inside a title → Lora italic, accent */
+h2 em,.anchor{font:400 italic 1.1em/1 var(--font-body);color:var(--accent);
+  letter-spacing:-.005em}
+h3{font:600 20px/1.2 var(--font-head);margin:34px 0 10px;scroll-margin-top:24px}
+p,li{color:var(--ink)} strong{font-weight:700}
+a{color:var(--accent);text-underline-offset:2px}
+a.backlink{float:right;font:400 12px/1.6 var(--font-head);color:var(--stone);text-decoration:none}
+a.backlink:hover{color:var(--accent)}
+
+/* pull statement — Lora italic protagonist */
+.statement{font:400 italic 26px/1.25 var(--font-body);
+  letter-spacing:-.01em;color:var(--ink);margin:26px 0;max-width:24em;text-wrap:pretty}
+
+/* ---- callout: single accent, hairline, no shadow ---- */
+.callout{border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  background:transparent;padding:14px 20px;margin:20px 0}
+.callout .label{font:500 11px/1 var(--font-head);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--accent);display:block;margin-bottom:8px}
+.callout.warn .label::after{content:" — watch out"}
+
+/* ---- chips ---- */
+.chip{display:inline-block;font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 9px;border:1px solid var(--hairline);color:var(--stone);margin:0 5px 5px 0}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+
+/* ---- tables: hairlines + mono headers, no heavy fills ---- */
+table{border-collapse:collapse;width:100%;margin:20px 0;font-size:15px;border:1px solid var(--hairline)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--hairline)}
+th{font:500 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+tr:last-child td{border-bottom:none}
+td .yes{color:var(--accent);font-weight:700} td .no{color:var(--ink);font-weight:700}
+
+/* ---- figure / diagram ---- */
+figure{margin:26px 0;padding:22px;border:1px solid var(--hairline);text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{margin-top:12px;font:400 13px/1.4 var(--font-head);color:var(--stone);
+  text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- code / details ---- */
+code{font:14px var(--font-mono);color:var(--accent)}
+pre{border:1px solid var(--hairline);padding:16px;overflow-x:auto;font:13px/1.6 var(--font-mono);color:var(--ink)}
+pre code{color:inherit}
+details{border:1px solid var(--hairline);padding:4px 18px;margin:16px 0}
+summary{cursor:pointer;font:500 14px/1 var(--font-head);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--stone);padding:12px 0}
+summary:hover{color:var(--accent)}
+
+/* ---- signature: monogram (always ink) + spectrum bar ---- */
+.spectrum{display:flex;height:4px;margin:40px 0 22px}
+.spectrum span{flex:1}
+.spectrum .s1{background:var(--orange)} .spectrum .s2{background:var(--blue)} .spectrum .s3{background:var(--green)}
+.signature{display:flex;flex-direction:column;gap:3px;color:var(--stone);
+  border-left:2px solid var(--accent);padding-left:16px}
+.signature .name{font:400 italic 18px/1 var(--font-body);color:var(--ink)}
+.signature .role{font:400 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.06em;color:var(--stone)}
+
+/* ---- phase color-coding: thin left bar, accent cycles ---- */
+.phase{display:flex;align-items:baseline;gap:10px;font:500 16px/1.4 var(--font-head);
+  padding:7px 0 7px 13px;border-left:3px solid var(--stone);margin:6px 0}
+.phase .pn{font:600 10px/1 var(--font-head);letter-spacing:.1em;text-transform:uppercase;color:var(--stone)}
+.phase.p-o{border-color:var(--orange)} .phase.p-b{border-color:var(--blue)} .phase.p-g{border-color:var(--green)}
+
+/* ---- metrics row: large numbers ---- */
+.metrics{display:flex;gap:28px;margin:24px 0;padding:18px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.metrics .metric{flex:0 1 auto}
+.metrics .big{font:700 34px/1 var(--font-head);color:var(--orange)}
+.metrics .label{font:500 11px/1 var(--font-head);letter-spacing:.08em;text-transform:uppercase;color:var(--stone);margin-top:6px}
+
+/* ---- status chips: done / active / todo ---- */
+.schip{display:inline-block;font:600 11px/1 var(--font-head);letter-spacing:.05em;text-transform:uppercase;
+  padding:5px 10px;border-radius:20px;margin:0 5px 5px 0}
+.schip.done{background:var(--green);color:#fff}
+.schip.active{background:var(--orange);color:#fff}
+.schip.todo{background:var(--hairline);color:var(--stone)}
+
+/* ---- progress bar ---- */
+.progress{margin:18px 0}
+.progress .bar{height:8px;border-radius:6px;background:var(--hairline);overflow:hidden}
+.progress .fill{height:100%;background:var(--orange)}
+.progress .label{font:500 12px/1 var(--font-head);color:var(--stone);margin-top:6px}
+
+@media(max-width:880px){
+  body{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--hairline)}
+  main{padding:32px 24px 90px}
+}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="eyebrow">[ PLAN ]</div>
+  <div class="doc-title">Drop Closed-Tab Ghosts Implementation Plan</div>
+  <a href="#architecture">Architecture</a>
+  <a href="#global-constraints">Global Constraints</a>
+  <a href="#task-1-extract-collapse-prompt">Task 1: Extract collapsePrompt as a shared helper</a>
+  <a href="#task-2-hasMatchingOpenTab">Task 2: hasMatchingOpenTab — pure prefix-match against open tab titles</a>
+  <a href="#task-3-detectionLooksReliable">Task 3: detectionLooksReliable — safety net against a broken viewType check</a>
+  <a href="#task-4-wire-open-tab-detection">Task 4: Wire open-tab detection into findActiveSessions</a>
+  <a href="#self-review-notes">Self-Review Notes</a>
+</nav>
+<main>
+<div class="metrics">
+    <div class="metric">
+        <div class="big">4</div>
+        <div class="label">Tasks</div>
+    </div>
+    <div class="metric">
+        <div class="big">~5h</div>
+        <div class="label">Est. effort</div>
+    </div>
+</div>
+
+<div class="progress">
+    <div class="fill" style="width: 0%"></div>
+</div>
+
+<div style="display: flex; gap: 1rem; margin-top: 1rem;">
+    <span class="schip todo">0 of 19 done</span>
+</div>
+
+<p class="statement">
+    <em>A status bar item</em> whose Claude Code tab has already been closed disappears promptly, instead of lingering until <code>idleTimeout</code> (default 180s) expires and showing a stale message as if it were the current tab's name.
+</p>
+
+<h2 id="architecture">Architecture</h2>
+
+<p>
+    A new pure module (<code>src/openTabMatch.ts</code>) decides, from plain data, whether a session's last prompt still corresponds to an open Claude Code tab title. <code>src/extension.ts</code> gets a thin, <code>vscode</code>-dependent wrapper that reads the real open tab titles and calls into that pure module from <code>findActiveSessions</code>, only when <code>onlyCurrentWindow</code> is <code>true</code>.
+</p>
+
+<p>
+    <strong>Tech Stack:</strong> TypeScript 5, <code>node --test</code>, VS Code <code>vscode.window.tabGroups</code> API (engine <code>^1.74.0</code>, well past when this API landed).
+</p>
+
+<h2 id="global-constraints">Global Constraints</h2>
+
+<ul>
+    <li><strong>No new runtime dependencies</strong> — spec: "no new npm packages".</li>
+    <li><strong>Filter applies only when <code>onlyCurrentWindow</code> is <code>true</code></strong> — <code>vscode.window.tabGroups</code> only sees the current window's tabs (spec Non-goals).</li>
+    <li><strong>viewType check must be <code>.includes('claudeVSCodePanel')</code></strong>, verified against the installed Claude Code extension's own bundle (spec Evidence) — do not use a different string.</li>
+    <li><strong>Never let this filter hide a session</strong> when detection itself looks unreliable — <code>detectionLooksReliable</code> must gate the filter (spec Design, "safety net").</li>
+    <li><strong>Code style:</strong> 4-space indentation, existing code style in <code>src/</code> (project CLAUDE.md).</li>
+</ul>
+
+<h2 id="task-1-extract-collapse-prompt">Task 1: Extract <code>collapsePrompt</code> as a shared helper</h2>
+
+<p class="eyebrow">Files: Modify <code>src/tabLabel.ts</code>, Test <code>src/tabLabel.test.ts</code></p>
+
+<p>
+    <strong>Produces:</strong> <code>export function collapsePrompt(text: string): string</code> — collapses runs of whitespace to a single space and trims. Used by <code>buildItemLabel</code> in this file, and by <code>hasMatchingOpenTab</code> in <a href="#task-2-hasMatchingOpenTab">Task 2</a>.
+</p>
+
+<details>
+    <summary>4 steps</summary>
+    <ol>
+        <li>
+            <strong>Step 1: Run the existing test suite to confirm the starting state is green</strong>
+            <ul>
+                <li>Run: <code>npm test</code></li>
+                <li>Expected: all <code>tabLabel.test.ts</code> cases PASS</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 2: Extract the helper and use it in <code>buildItemLabel</code></strong>
+            <p>Add this export to <code>src/tabLabel.ts</code>:</p>
+            <pre><code class="language-ts">/**
+ * Collapse whitespace to single spaces and trim, so a prompt that opens
+ * with a heading, blank line, or pasted indentation reads as one line.
+ * Shared with openTabMatch.ts, which needs the identical normalization to
+ * compare a session's last prompt against an open tab's title.
+ */
+export function collapsePrompt(text: string): string {
+    return (text ?? '').replace(/\s+/g, ' ').trim();
+}</code></pre>
+            <p>Replace the inline collapse in <code>buildItemLabel</code>:</p>
+            <pre><code class="language-ts">const collapsed = collapsePrompt(lastPrompt);</code></pre>
+        </li>
+        <li>
+            <strong>Step 3: Run the test suite again to confirm no regression</strong>
+            <ul>
+                <li>Run: <code>npm test</code></li>
+                <li>Expected: all <code>tabLabel.test.ts</code> cases still PASS, unchanged output</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 4: Commit</strong>
+            <pre><code class="language-bash">git add src/tabLabel.ts
+git commit -m "refactor: export collapsePrompt from tabLabel for reuse"</code></pre>
+        </li>
+    </ol>
+</details>
+
+<h2 id="task-2-hasMatchingOpenTab">Task 2: <code>hasMatchingOpenTab</code> — pure prefix-match against open tab titles</h2>
+
+<p class="eyebrow">Files: Create <code>src/openTabMatch.ts</code>, Test <code>src/openTabMatch.test.ts</code></p>
+
+<p>
+    <strong>Produces:</strong> <code>export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean</code>. Used by <code>src/extension.ts</code> in <a href="#task-4-wire-open-tab-detection">Task 4</a>.
+</p>
+
+<details>
+    <summary>5 steps</summary>
+    <ol>
+        <li>
+            <strong>Step 1: Write the failing tests</strong>
+            <p>Create <code>src/openTabMatch.test.ts</code> with 8 test cases covering:</p>
+            <ul>
+                <li>Ellipsis-truncated prefix matching</li>
+                <li>Untruncated full prompt match</li>
+                <li>Unrelated tab title (no match)</li>
+                <li>Empty and whitespace-only prompts (always match)</li>
+                <li>No open tabs with non-empty prompt (no match)</li>
+                <li>Multiple open tabs (correct one matches)</li>
+                <li>Whitespace collapsing before comparison</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 2: Verify tests fail</strong>
+            <ul>
+                <li>Run: <code>npx tsc && node --test out/openTabMatch.test.js</code></li>
+                <li>Expected: FAIL — module doesn't exist yet</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 3: Write the implementation</strong>
+            <p>Create <code>src/openTabMatch.ts</code> with prefix-matching logic that:</p>
+            <ul>
+                <li>Imports <code>collapsePrompt</code> from <code>./tabLabel</code></li>
+                <li>Returns <code>true</code> for empty/whitespace-only prompts (safety: never claim closed before recording a message)</li>
+                <li>Strips trailing ellipsis from tab titles and checks both <code>collapsed.startsWith(stripped)</code> and <code>stripped.startsWith(collapsed)</code></li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 4: Verify tests pass</strong>
+            <ul>
+                <li>Run: <code>npx tsc && node --test out/openTabMatch.test.js</code></li>
+                <li>Expected: all 8 cases PASS</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 5: Commit</strong>
+            <pre><code class="language-bash">git add src/openTabMatch.ts src/openTabMatch.test.ts
+git commit -m "feat: add hasMatchingOpenTab for correlating sessions to open tabs"</code></pre>
+        </li>
+    </ol>
+</details>
+
+<h2 id="task-3-detectionLooksReliable">Task 3: <code>detectionLooksReliable</code> — safety net against a broken viewType check</h2>
+
+<p class="eyebrow">Files: Modify <code>src/openTabMatch.ts</code>, Test <code>src/openTabMatch.test.ts</code></p>
+
+<p>
+    <strong>Produces:</strong> <code>export function detectionLooksReliable(sessions: { lastPrompt: string; lastUpdated: Date }[], openTabTitles: string[]): boolean</code>. Used by <code>src/extension.ts</code> in <a href="#task-4-wire-open-tab-detection">Task 4</a> to decide whether to apply the filter at all this refresh.
+</p>
+
+<p class="callout">
+    <strong>Purpose:</strong> If the freshest session by <code>lastUpdated</code> doesn't match any open tab title, the <code>viewType</code> check is probably broken (a future Claude Code release renamed its panel view type). Callers should skip the filter entirely and fall back to plain <code>idleTimeout</code>, so a detection failure degrades to today's existing behaviour rather than hiding every active session.
+</p>
+
+<details>
+    <summary>5 steps</summary>
+    <ol>
+        <li>
+            <strong>Step 1: Write the failing tests</strong>
+            <p>Append 5 new test cases to <code>src/openTabMatch.test.ts</code>:</p>
+            <ul>
+                <li>Reliable when freshest session matches an open tab</li>
+                <li>Unreliable when freshest session matches nothing (viewType check likely broken)</li>
+                <li>Reliable when freshest has no recorded prompt yet</li>
+                <li>Reliable with empty session list</li>
+                <li>Picks the freshest by <code>lastUpdated</code> regardless of array order</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 2: Verify tests fail</strong>
+            <ul>
+                <li>Run: <code>npx tsc && node --test out/openTabMatch.test.js</code></li>
+                <li>Expected: FAIL — <code>detectionLooksReliable is not a function</code></li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 3: Write the implementation</strong>
+            <p>Append to <code>src/openTabMatch.ts</code>:</p>
+            <ul>
+                <li>Return <code>true</code> if sessions array is empty (nothing to protect against)</li>
+                <li>Find the freshest session by reducing on <code>lastUpdated</code></li>
+                <li>Return whether that freshest session matches any open tab</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 4: Verify tests pass</strong>
+            <ul>
+                <li>Run: <code>npx tsc && node --test out/openTabMatch.test.js</code></li>
+                <li>Expected: all 13 cases (8 from Task 2 + 5 new) PASS</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 5: Commit</strong>
+            <pre><code class="language-bash">git add src/openTabMatch.ts src/openTabMatch.test.ts
+git commit -m "feat: add detectionLooksReliable safety net"</code></pre>
+        </li>
+    </ol>
+</details>
+
+<h2 id="task-4-wire-open-tab-detection">Task 4: Wire open-tab detection into <code>findActiveSessions</code></h2>
+
+<p class="eyebrow">Files: Modify <code>src/extension.ts</code></p>
+
+<p>
+    <strong>Consumes:</strong> <code>hasMatchingOpenTab</code>, <code>detectionLooksReliable</code> from <code>./openTabMatch</code> (Tasks 2–3). No new exports — this task is a thin <code>vscode</code>-dependent wrapper with no unit test of its own; it is covered by the manual gate in Step 4.
+</p>
+
+<details>
+    <summary>5 steps</summary>
+    <ol>
+        <li>
+            <strong>Step 1: Add the import and the tab-title reader</strong>
+            <p>In <code>src/extension.ts</code>, add to top-of-file imports (near the existing <code>import { buildItemLabel } from './tabLabel';</code>):</p>
+            <pre><code class="language-ts">import { hasMatchingOpenTab, detectionLooksReliable } from './openTabMatch';</code></pre>
+            <p>Add this helper function immediately above <code>findActiveSessions</code>:</p>
+            <pre><code class="language-ts">/**
+ * Titles of the Claude Code tabs currently open in this window. Empty when
+ * none are open, or when reading tabGroups throws for any reason (an
+ * unexpected VS Code API failure should never crash a refresh cycle).
+ */
+function getOpenClaudeTabTitles(): string[] {
+    try {
+        const titles: string[] = [];
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                if (tab.input instanceof vscode.TabInputWebview &&
+                    tab.input.viewType.includes('claudeVSCodePanel')) {
+                    titles.push(tab.label);
+                }
+            }
+        }
+        return titles;
+    } catch (e) {
+        console.error('Claude Context Bar: failed to read open tabs:', e);
+        return [];
+    }
+}</code></pre>
+        </li>
+        <li>
+            <strong>Step 2: Apply the filter in <code>findActiveSessions</code></strong>
+            <p>Find the catch block after session population and before the <code>// Group sessions by base project name</code> comment. Insert this filter block:</p>
+            <pre><code class="language-ts">    // A session file can stay within idleTimeout after its actual Claude Code
+    // tab has been closed. onlyCurrentWindow means every real tab for these
+    // sessions must be in *this* window's tabGroups, so cross-check against
+    // what's genuinely open and drop the rest — instead of waiting out
+    // idleTimeout while showing a stale prompt as if it were the current tab.
+    let liveSessions = sessions;
+    if (onlyCurrentWindow) {
+        const openTabTitles = getOpenClaudeTabTitles();
+        if (detectionLooksReliable(sessions, openTabTitles)) {
+            liveSessions = sessions.filter((s) => hasMatchingOpenTab(s.lastPrompt, openTabTitles));
+        }
+    }
+
+    // Group sessions by base project name</code></pre>
+            <p>Then update the grouping loop from <code>for (const session of sessions)</code> to <code>for (const session of liveSessions)</code>.</p>
+        </li>
+        <li>
+            <strong>Step 3: Compile and run the full test suite</strong>
+            <ul>
+                <li>Run: <code>npm test</code></li>
+                <li>Expected: all suites PASS — <code>tabLabel.test.ts</code>, <code>sessionFilter.test.ts</code>, <code>contextLimit.test.ts</code>, <code>openTabMatch.test.ts</code></li>
+                <li>Note: <code>extension.ts</code> has no dedicated test file (per the 2026-08-09 spec), so this is a compile-and-no-regression check</li>
+            </ul>
+        </li>
+        <li>
+            <strong>Step 4: Manual gate (required)</strong>
+            <p>In the Extension Development Host (F5 from this project, or <code>code --extensionDevelopmentPath=.</code>):</p>
+            <ol>
+                <li>Open two Claude Code tabs for the same project; send a distinct message in each.</li>
+                <li>Confirm both appear as separate status bar items, each labeled with its own message.</li>
+                <li>Close one of the two tabs.</li>
+                <li>Confirm that tab's status bar item disappears within one refresh cycle (<code>refreshInterval</code> setting, default a few seconds) — not after the ~180s <code>idleTimeout</code>.</li>
+                <li>Confirm the remaining tab's item is unaffected.</li>
+            </ol>
+            <p><strong>Record the result (pass/fail) before moving on — this is the only verification this task gets for the live VS Code integration.</strong></p>
+        </li>
+        <li>
+            <strong>Step 5: Commit</strong>
+            <pre><code class="language-bash">git add src/extension.ts
+git commit -m "fix: drop status bar items for sessions whose tab already closed"</code></pre>
+        </li>
+    </ol>
+</details>
+
+<h2 id="self-review-notes">Self-Review Notes</h2>
+
+<ul>
+    <li>
+        <strong>Spec coverage:</strong>
+        <ul>
+            <li><strong>Problem/Goal</strong> → Task 4 (filter applied in <code>findActiveSessions</code>)</li>
+            <li><strong>Non-goals</strong> (onlyCurrentWindow gate, idleTimeout untouched, heuristic not identity) → Task 4 Step 2 (<code>if (onlyCurrentWindow)</code>), and <code>openTabMatch.ts</code> never touches <code>idleTimeout</code> at all</li>
+            <li><strong>Evidence's exact viewType check</strong> → Task 4 Step 1</li>
+            <li><strong>collapsePrompt sharing</strong> → Task 1</li>
+            <li><strong>detectionLooksReliable safety net</strong> → Task 3</li>
+            <li><strong>Manual gate</strong> → Task 4 Step 4</li>
+        </ul>
+    </li>
+    <li>
+        <strong>Type consistency:</strong> <code>hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean</code> and <code>detectionLooksReliable(sessions: {lastPrompt: string; lastUpdated: Date}[], openTabTitles: string[]): boolean</code> are used identically in their own tests (Tasks 2–3) and at the call site (Task 4 Step 2) — <code>sessions</code> there is <code>SessionInfo[]</code>, which is a structural match.
+    </li>
+    <li><strong>No placeholder scan:</strong> Every step has complete, copy-ready code.</li>
+</ul>
+  <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+  <div class="signature">
+    <div class="name">rich-doc</div>
+    <div class="role">superpowers companion · Anthropic brand</div>
+  </div>
+</main>
+</body>
+</html>
+<!-- rich-doc-src-sha256:e79c67b1e19c17b774abc3f73ffc91c6783a98e523311307e1450e36d94ea18e -->
