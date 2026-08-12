@@ -133,6 +133,22 @@ message in each, close one, and confirm its status bar item disappears well insi
   which label), so a false match just means the filter under-corrects for one case, not
   that an item shows wrong content it wasn't already going to show.
 - If Claude Code changes `viewType` in a future release, `detectionLooksReliable` should
-  catch it (the freshest session stops matching) and the feature quietly no-ops back to
-  `idleTimeout`-only. Not proven under a real future version — accepted, since the
+  catch it (no session with a prompt matches any open tab) and the feature quietly no-ops
+  back to `idleTimeout`-only. Not proven under a real future version — accepted, since the
   fallback direction is safe (worst case: today's existing behavior, not a new one).
+
+## Amendment: `detectionLooksReliable` checked the wrong session
+
+Manual gate turned up a real bug in the first implementation. It checked only the
+most-recently-updated session — but closing the tab you were just using makes *that*
+session the freshest one on disk, and it correctly stops matching (its tab really is
+gone). The original heuristic read that as "the whole mechanism is broken" and disabled
+the filter, so every stale ghost that had just been correctly hidden flooded back the
+moment you closed any tab — the single most common way to trigger this feature at all.
+
+Fixed to trust the mechanism if *any* session with a recorded prompt matches *some* open
+tab, rather than requiring it of the freshest one specifically. Zero open tabs detected
+stays untrustworthy (ambiguous between "really none open" and "detection broken"); a
+session with no recorded prompt is excluded from the check since `hasMatchingOpenTab`
+passes it vacuously either way and so proves nothing about whether matching works.
+`detectionLooksReliable`'s signature dropped the now-unused `lastUpdated` field.

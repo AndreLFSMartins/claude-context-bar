@@ -70,24 +70,29 @@ describe('hasMatchingOpenTab', () => {
 });
 
 describe('detectionLooksReliable', () => {
-    test('reliable when the freshest session matches an open tab title', () => {
+    test('reliable when some session with a prompt matches an open tab, even if it is not the most recently updated one', () => {
+        // Regression: closing the tab you were just using makes that
+        // session the most recently updated one on disk, and it correctly
+        // stops matching (its tab is gone). That must not read as "the
+        // whole detection mechanism is broken" as long as some other,
+        // still-open tab's session keeps matching correctly.
         assert.strictEqual(
             detectionLooksReliable(
                 [
-                    { lastPrompt: 'old message', lastUpdated: new Date('2026-08-12T11:00:00') },
-                    { lastPrompt: 'newest message', lastUpdated: new Date('2026-08-12T11:18:00') }
+                    { lastPrompt: 'the tab that just closed' },
+                    { lastPrompt: 'teste' }
                 ],
-                ['newest messag…']
+                ['teste']
             ),
             true
         );
     });
 
-    test('unreliable when the freshest session matches nothing open — the viewType check is probably broken', () => {
+    test('unreliable when there are open tabs but no session with a prompt matches any of them', () => {
         assert.strictEqual(
             detectionLooksReliable(
                 [
-                    { lastPrompt: 'newest message', lastUpdated: new Date('2026-08-12T11:18:00') }
+                    { lastPrompt: 'some message' }
                 ],
                 ['completely unrelated title']
             ),
@@ -95,11 +100,23 @@ describe('detectionLooksReliable', () => {
         );
     });
 
-    test('reliable when the freshest session has no recorded prompt yet — nothing to check', () => {
+    test('unreliable when no tabs are detected as open at all — ambiguous between "really none open" and "detection broken", so don\'t risk hiding real sessions', () => {
         assert.strictEqual(
             detectionLooksReliable(
                 [
-                    { lastPrompt: '', lastUpdated: new Date('2026-08-12T11:18:00') }
+                    { lastPrompt: 'some message' }
+                ],
+                []
+            ),
+            false
+        );
+    });
+
+    test('reliable when no session has a recorded prompt yet — nothing at risk either way', () => {
+        assert.strictEqual(
+            detectionLooksReliable(
+                [
+                    { lastPrompt: '' }
                 ],
                 ['unrelated title']
             ),
@@ -110,19 +127,6 @@ describe('detectionLooksReliable', () => {
     test('reliable with an empty session list — nothing to protect against', () => {
         assert.strictEqual(
             detectionLooksReliable([], []),
-            true
-        );
-    });
-
-    test('picks the freshest by lastUpdated regardless of array order', () => {
-        assert.strictEqual(
-            detectionLooksReliable(
-                [
-                    { lastPrompt: 'newest message', lastUpdated: new Date('2026-08-12T11:18:00') },
-                    { lastPrompt: 'old message', lastUpdated: new Date('2026-08-12T11:00:00') }
-                ],
-                ['newest messag…']
-            ),
             true
         );
     });

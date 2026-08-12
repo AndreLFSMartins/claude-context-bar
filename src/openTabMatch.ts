@@ -54,23 +54,42 @@ export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]):
 /**
  * Is the open-tab title list trustworthy enough to filter sessions with?
  *
- * The freshest session by lastUpdated is almost certainly the tab the user is
- * looking at right now. If even that one doesn't match anything in
- * openTabTitles, the viewType check in getOpenClaudeTabTitles() (extension.ts)
- * is more likely broken — e.g. a future Claude Code release renamed its panel
- * view type — than reality actually having zero open tabs while a session was
- * just updated. Callers should skip the filter entirely when this returns
- * false, falling back to plain idleTimeout, so a detection failure degrades to
- * today's existing behaviour rather than hiding every active session.
+ * Checking only the most-recently-updated session (an earlier version of
+ * this function did that) breaks on the single most common case: closing
+ * the tab you were just using makes *that* session the freshest one on
+ * disk, and it correctly stops matching — its tab really is gone. Reading
+ * that as "the whole mechanism is broken" throws away the filter exactly
+ * when it just did its job.
+ *
+ * Instead: trust the mechanism if *any* session that has a recorded prompt
+ * matches *some* open tab. A session with no recorded prompt is not
+ * evidence either way — hasMatchingOpenTab always passes it regardless of
+ * whether matching is actually working, so it can't confirm anything.
+ * Zero open tabs detected at all is treated as untrustworthy too: it's
+ * ambiguous between "every tab really is closed" and "the viewType check
+ * in getOpenClaudeTabTitles() broke" (e.g. a future Claude Code release
+ * renamed its panel view type), and there's no way to tell those apart
+ * from here.
+ *
+ * Callers should skip the filter entirely when this returns false, falling
+ * back to plain idleTimeout, so a detection failure degrades to today's
+ * existing behaviour rather than hiding every active session.
  */
 export function detectionLooksReliable(
-    sessions: { lastPrompt: string; lastUpdated: Date }[],
+    sessions: { lastPrompt: string }[],
     openTabTitles: string[]
 ): boolean {
     if (sessions.length === 0) {
         return true;
     }
+    if (openTabTitles.length === 0) {
+        return false;
+    }
 
-    const freshest = sessions.reduce((a, b) => (a.lastUpdated > b.lastUpdated ? a : b));
-    return hasMatchingOpenTab(freshest.lastPrompt, openTabTitles);
+    const withPrompt = sessions.filter((s) => collapsePrompt(s.lastPrompt) !== '');
+    if (withPrompt.length === 0) {
+        return true;
+    }
+
+    return withPrompt.some((s) => hasMatchingOpenTab(s.lastPrompt, openTabTitles));
 }
