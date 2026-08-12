@@ -22,6 +22,16 @@
  * @param fallbackName  Project name to use when there is no prompt to show.
  * @param length        Characters to keep. Zero or less turns the feature off.
  */
+/**
+ * Collapse whitespace to single spaces and trim, so a prompt that opens
+ * with a heading, blank line, or pasted indentation reads as one line.
+ * Shared with openTabMatch.ts, which needs the identical normalization to
+ * compare a session's last prompt against an open tab's title.
+ */
+export function collapsePrompt(text: string): string {
+    return (text ?? '').replace(/\s+/g, ' ').trim();
+}
+
 export function buildItemLabel(opts: {
     lastPrompt: string;
     fallbackName: string;
@@ -36,7 +46,7 @@ export function buildItemLabel(opts: {
     // A prompt can open with a heading, a blank line, or pasted indentation.
     // Collapsing first stops the visible characters from being spent on
     // whitespace and keeps the label on one line.
-    const collapsed = (lastPrompt ?? '').replace(/\s+/g, ' ').trim();
+    const collapsed = collapsePrompt(lastPrompt);
     if (!collapsed) {
         return fallbackName;
     }
