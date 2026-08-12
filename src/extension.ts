@@ -8,6 +8,7 @@ import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
 import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
 import { buildItemLabel } from './tabLabel';
+import { hasMatchingOpenTab, detectionLooksReliable } from './openTabMatch';
 
 interface SessionInfo {
     projectName: string;
@@ -462,6 +463,29 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
     });
 }
 
+/**
+ * Titles of the Claude Code tabs currently open in this window. Empty when
+ * none are open, or when reading tabGroups throws for any reason (an
+ * unexpected VS Code API failure should never crash a refresh cycle).
+ */
+function getOpenClaudeTabTitles(): string[] {
+    try {
+        const titles: string[] = [];
+        for (const group of vscode.window.tabGroups.all) {
+            for (const tab of group.tabs) {
+                if (tab.input instanceof vscode.TabInputWebview &&
+                    tab.input.viewType.includes('claudeVSCodePanel')) {
+                    titles.push(tab.label);
+                }
+            }
+        }
+        return titles;
+    } catch (e) {
+        console.error('Claude Context Bar: failed to read open tabs:', e);
+        return [];
+    }
+}
+
 async function findActiveSessions(): Promise<SessionInfo[]> {
     const sessions: SessionInfo[] = [];
     const claudeDir = getClaudeProjectsDir();
@@ -560,9 +584,22 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
         console.error('Error scanning Claude projects:', e);
     }
 
+    // A session file can stay within idleTimeout after its actual Claude Code
+    // tab has been closed. onlyCurrentWindow means every real tab for these
+    // sessions must be in *this* window's tabGroups, so cross-check against
+    // what's genuinely open and drop the rest — instead of waiting out
+    // idleTimeout while showing a stale prompt as if it were the current tab.
+    let liveSessions = sessions;
+    if (onlyCurrentWindow) {
+        const openTabTitles = getOpenClaudeTabTitles();
+        if (detectionLooksReliable(sessions, openTabTitles)) {
+            liveSessions = sessions.filter((s) => hasMatchingOpenTab(s.lastPrompt, openTabTitles));
+        }
+    }
+
     // Group sessions by base project name
     const projectGroups = new Map<string, SessionInfo[]>();
-    for (const session of sessions) {
+    for (const session of liveSessions) {
         const base = session.projectName;
         if (!projectGroups.has(base)) {
             projectGroups.set(base, []);
