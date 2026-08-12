@@ -50,3 +50,27 @@ export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]):
         return collapsed.startsWith(stripped) || stripped.startsWith(collapsed);
     });
 }
+
+/**
+ * Is the open-tab title list trustworthy enough to filter sessions with?
+ *
+ * The freshest session by lastUpdated is almost certainly the tab the user is
+ * looking at right now. If even that one doesn't match anything in
+ * openTabTitles, the viewType check in getOpenClaudeTabTitles() (extension.ts)
+ * is more likely broken — e.g. a future Claude Code release renamed its panel
+ * view type — than reality actually having zero open tabs while a session was
+ * just updated. Callers should skip the filter entirely when this returns
+ * false, falling back to plain idleTimeout, so a detection failure degrades to
+ * today's existing behaviour rather than hiding every active session.
+ */
+export function detectionLooksReliable(
+    sessions: { lastPrompt: string; lastUpdated: Date }[],
+    openTabTitles: string[]
+): boolean {
+    if (sessions.length === 0) {
+        return true;
+    }
+
+    const freshest = sessions.reduce((a, b) => (a.lastUpdated > b.lastUpdated ? a : b));
+    return hasMatchingOpenTab(freshest.lastPrompt, openTabTitles);
+}
