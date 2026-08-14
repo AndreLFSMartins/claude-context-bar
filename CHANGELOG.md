@@ -2,6 +2,18 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.1] - 2026-08-14
+
+### Fixed
+- **Status bar items follow the tab's AI-generated session title.** Claude Code (since ~2026-08-09)
+  retitles its tab with an AI-generated session title, written to the session `.jsonl` as
+  `{"type":"ai-title"}` — verified in VS Code's persisted editor layout
+  (`"providedId":"claudeVSCodePanel","title":"Investigar mudança de no…"`). The item label and the
+  closed-tab ghost filter both assumed the tab title was always the latest prompt, so the bar
+  diverged from the tab once the title was generated, and an ai-titled session could be wrongly
+  filtered out as a closed tab. The label now prefers the AI title (falling back to the prompt,
+  then the project name), and tab matching accepts either text.
+
 ## [Fork] - 2026-08-09
 
 Forked from [edenaion/claude-context-bar](https://github.com/edenaion/claude-context-bar) at 1.6.0.
