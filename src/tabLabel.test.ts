@@ -78,3 +78,55 @@ describe('buildItemLabel', () => {
         );
     });
 });
+
+describe('buildItemLabel with an AI-generated session title', () => {
+    test('prefers the AI title over the last prompt — the tab shows the title once it exists', () => {
+        // Real divergence observed 2026-08-14: the tab was titled
+        // "Investigar mudança de no…" (the ai-title) while the bar showed the
+        // opening of the latest prompt.
+        assert.strictEqual(
+            buildItemLabel({
+                aiTitle: 'Investigar mudança de nome na context bar',
+                lastPrompt: 'o context bar tem o nome mudado pela última msg',
+                fallbackName: 'CCB',
+                length: 10
+            }),
+            'Investigar'
+        );
+    });
+
+    test('falls back to the last prompt while the session has no AI title yet', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: '', lastPrompt: 'faz o merge', fallbackName: 'CCB', length: 6 }),
+            'faz o'
+        );
+    });
+
+    test('a whitespace-only AI title is treated as absent', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: '  \n ', lastPrompt: 'faz o merge', fallbackName: 'CCB', length: 6 }),
+            'faz o'
+        );
+    });
+
+    test('uses the AI title even when no prompt was recorded', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: 'Título', lastPrompt: '', fallbackName: 'CCB', length: 6 }),
+            'Título'
+        );
+    });
+
+    test('length 0 still turns the feature off, AI title included', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: 'Investigar mudança', lastPrompt: 'oi', fallbackName: 'CCB', length: 0 }),
+            'CCB'
+        );
+    });
+
+    test('falls back to the project name when both title and prompt are empty', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: '', lastPrompt: '', fallbackName: 'CCB-2', length: 6 }),
+            'CCB-2'
+        );
+    });
+});

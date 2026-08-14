@@ -6,7 +6,7 @@ describe('hasMatchingOpenTab', () => {
     test('matches when the open tab title is the ellipsis-truncated prefix of the prompt', () => {
         assert.strictEqual(
             hasMatchingOpenTab(
-                'o nome que está aparecendo como se fosse da sessão não é o que está na aba',
+                { lastPrompt: 'o nome que está aparecendo como se fosse da sessão não é o que está na aba' },
                 ['o nome que está aparecen…']
             ),
             true
@@ -15,7 +15,7 @@ describe('hasMatchingOpenTab', () => {
 
     test('matches when the tab title equals the whole prompt, untruncated', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('ok', ['ok']),
+            hasMatchingOpenTab({ lastPrompt: 'ok' }, ['ok']),
             true
         );
     });
@@ -23,7 +23,7 @@ describe('hasMatchingOpenTab', () => {
     test('does not match against an unrelated open tab title', () => {
         assert.strictEqual(
             hasMatchingOpenTab(
-                'Qdo vejo isso aqui. Eu não consigo dizer qual das abas é.',
+                { lastPrompt: 'Qdo vejo isso aqui. Eu não consigo dizer qual das abas é.' },
                 ['a versão nova está instalada no vscode ?']
             ),
             false
@@ -32,28 +32,28 @@ describe('hasMatchingOpenTab', () => {
 
     test('an empty last prompt always matches — nothing to correlate yet, never claim closed', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('', ['a versão nova está instalada no vscode ?']),
+            hasMatchingOpenTab({ lastPrompt: '' }, ['a versão nova está instalada no vscode ?']),
             true
         );
     });
 
     test('a whitespace-only last prompt also always matches', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('  \n\t ', []),
+            hasMatchingOpenTab({ lastPrompt: '  \n\t ' }, []),
             true
         );
     });
 
     test('no open tabs at all, non-empty prompt: no match', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('leia o arquivo', []),
+            hasMatchingOpenTab({ lastPrompt: 'leia o arquivo' }, []),
             false
         );
     });
 
     test('matches whichever title in the list corresponds, when there are several open tabs', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('testado. pode fazer merge, push e deploy', [
+            hasMatchingOpenTab({ lastPrompt: 'testado. pode fazer merge, push e deploy' }, [
                 'a versão nova está instalada no vscode ?',
                 'testado. pode fazer merge, pu…'
             ]),
@@ -63,8 +63,55 @@ describe('hasMatchingOpenTab', () => {
 
     test('collapses whitespace before comparing, same as the label itself', () => {
         assert.strictEqual(
-            hasMatchingOpenTab('faz  o\n\n  merge', ['faz o merge']),
+            hasMatchingOpenTab({ lastPrompt: 'faz  o\n\n  merge' }, ['faz o merge']),
             true
+        );
+    });
+
+    test('matches via the AI title once the tab has retitled itself with it', () => {
+        // Real divergence observed 2026-08-14: the tab persisted as
+        // "Investigar mudança de no…" (the ai-title, truncated) while the
+        // session's last prompt was a completely different text. Matching on
+        // the prompt alone would wrongly read this open tab as closed.
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                {
+                    aiTitle: 'Investigar mudança de nome na context bar',
+                    lastPrompt: 'o context bar tem o nome mudado pela última msg'
+                },
+                ['Investigar mudança de no…']
+            ),
+            true
+        );
+    });
+
+    test('still matches via the prompt while the AI title has not been generated yet', () => {
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { aiTitle: '', lastPrompt: 'o context bar tem o nome mudado' },
+                ['o context bar tem o nome…']
+            ),
+            true
+        );
+    });
+
+    test('no match when neither the AI title nor the prompt corresponds to any open tab', () => {
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { aiTitle: 'Revisar amendment do ADR 004', lastPrompt: 'ok pode seguir' },
+                ['uma aba de outra sessão']
+            ),
+            false
+        );
+    });
+
+    test('an AI title with no recorded prompt is still correlatable evidence', () => {
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { aiTitle: 'Revisar amendment do ADR 004', lastPrompt: '' },
+                ['uma aba de outra sessão']
+            ),
+            false
         );
     });
 });
@@ -85,6 +132,33 @@ describe('detectionLooksReliable', () => {
                 ['teste']
             ),
             true
+        );
+    });
+
+    test('reliable when a session matches only through its AI title', () => {
+        assert.strictEqual(
+            detectionLooksReliable(
+                [
+                    {
+                        aiTitle: 'Investigar mudança de nome na context bar',
+                        lastPrompt: 'o context bar tem o nome mudado pela última msg'
+                    }
+                ],
+                ['Investigar mudança de no…']
+            ),
+            true
+        );
+    });
+
+    test('a session with only an AI title counts as correlatable — unreliable when it matches nothing', () => {
+        assert.strictEqual(
+            detectionLooksReliable(
+                [
+                    { aiTitle: 'Revisar amendment do ADR 004', lastPrompt: '' }
+                ],
+                ['completely unrelated title']
+            ),
+            false
         );
     });
 

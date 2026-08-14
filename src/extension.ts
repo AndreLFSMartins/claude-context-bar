@@ -17,6 +17,7 @@ interface SessionInfo {
     fullSessionId: string;
     entrypoint: string;
     lastPrompt: string;
+    aiTitle: string;
     sessionFile: string;
     inputTokens: number;
     cacheReadTokens: number;
@@ -217,7 +218,8 @@ interface TokenUsage {
     sessionCreated: Date | null;
     wasCleared: boolean;  // True if session ended with /clear command
     entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
-    lastPrompt: string;   // Latest user prompt — the text the Claude Code tab titles itself with
+    lastPrompt: string;   // Latest user prompt — what the Claude Code tab shows until an AI title exists
+    aiTitle: string;      // AI-generated session title — what the tab shows once generated ('' before that)
 }
 
 // Fuzzy emoji matching based on project name
@@ -336,7 +338,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
         try {
             const stats = fs.statSync(jsonlPath);
             if (stats.size === 0) {
-                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '' });
+                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '' });
                 return;
             }
 
@@ -386,6 +388,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
             let model = '';
             let entrypoint = '';
             let lastPrompt = '';
+            let aiTitle = '';
             let finalUsage ={ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
 
             // Forward pass from start index to find metadata and latest usage
@@ -410,6 +413,14 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // every message, so the last one is what the tab is showing.
                     if (entry.type === 'last-prompt' && typeof entry.lastPrompt === 'string') {
                         lastPrompt = entry.lastPrompt;
+                    }
+
+                    // AI-generated session title (present since ~2026-08-09).
+                    // Once it exists the tab shows it instead of the prompt.
+                    // Latest wins: it is re-emitted after messages and can be
+                    // regenerated after a /clear (scan already starts there).
+                    if (entry.type === 'ai-title' && typeof entry.aiTitle === 'string') {
+                        aiTitle = entry.aiTitle;
                     }
 
                     // Look for first user message (for display)
@@ -454,11 +465,12 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                 sessionCreated,
                 wasCleared,
                 entrypoint,
-                lastPrompt
+                lastPrompt,
+                aiTitle
             });
 
         } catch (e) {
-            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '' });
+            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '' });
         }
     });
 }
@@ -564,6 +576,7 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                         fullSessionId,
                         entrypoint: usage.entrypoint,
                         lastPrompt: usage.lastPrompt,
+                        aiTitle: usage.aiTitle,
                         sessionFile: file.path,
                         inputTokens: usage.inputTokens,
                         cacheReadTokens: usage.cacheReadTokens,
@@ -593,7 +606,7 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     if (onlyCurrentWindow) {
         const openTabTitles = getOpenClaudeTabTitles();
         if (detectionLooksReliable(sessions, openTabTitles)) {
-            liveSessions = sessions.filter((s) => hasMatchingOpenTab(s.lastPrompt, openTabTitles));
+            liveSessions = sessions.filter((s) => hasMatchingOpenTab(s, openTabTitles));
         }
     }
 
@@ -790,6 +803,7 @@ async function refreshAllSessions() {
         // told apart by the text their Claude Code tab is titled with.
         const projectLabel = compactMode ? getShortName(session.projectName, shortNames) : session.projectName;
         const displayName = buildItemLabel({
+            aiTitle: session.aiTitle,
             lastPrompt: session.lastPrompt,
             fallbackName: projectLabel,
             length: tabNameLength

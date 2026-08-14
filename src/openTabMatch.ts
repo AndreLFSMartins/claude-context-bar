@@ -1,21 +1,23 @@
 /**
- * Decide whether a session's last prompt still corresponds to a Claude Code
- * tab that is actually open, rather than one that has since been closed.
+ * Decide whether a session still corresponds to a Claude Code tab that is
+ * actually open, rather than one that has since been closed.
  *
  * findActiveSessions() treats any .jsonl file modified within idleTimeout as
  * "active." A closed tab's file keeps a recent mtime and lingers there for up
  * to idleTimeout — and since the status bar item now labels itself with the
- * session's last prompt (tabLabel.ts) instead of the project name, a lingering
- * item shows what looks like a real, current message that in fact belongs to
- * a tab that no longer exists.
+ * session's own text (tabLabel.ts) instead of the project name, a lingering
+ * item shows what looks like a real, current tab that in fact no longer
+ * exists.
  *
  * vscode.window.tabGroups exposes open tab titles but not session ids — the
  * Claude Code extension's private `sessionPanels` map (keyed by session id) is
- * not public API. So matching is by title text: Claude Code truncates its tab
- * title from the same last-prompt text this reads from the .jsonl, with a
- * trailing "…" when it doesn't fit. This is a best-effort heuristic, not an
- * identity check — see detectionLooksReliable() for the safety net that
- * bounds how much a wrong guess here can hide.
+ * not public API. So matching is by title text. The Claude Code tab titles
+ * itself with the AI-generated session title once one exists (`ai-title` in
+ * the .jsonl), and with the latest prompt before that, truncated with a
+ * trailing "…" when it doesn't fit — so a session matches when EITHER of its
+ * recorded texts corresponds to an open tab's title. This is a best-effort
+ * heuristic, not an identity check — see detectionLooksReliable() for the
+ * safety net that bounds how much a wrong guess here can hide.
  *
  * Pure so the behaviour is testable without a VS Code host, following the
  * same pattern as tabLabel.ts and sessionFilter.ts.
@@ -23,32 +25,44 @@
 
 import { collapsePrompt } from './tabLabel';
 
+/** The two texts a Claude Code tab may be titling itself with. */
+export interface TabTitleSource {
+    aiTitle?: string;
+    lastPrompt: string;
+}
+
+function titleMatchesText(title: string, collapsedText: string): boolean {
+    // Strip a trailing ellipsis left by VS Code's own truncation before
+    // comparing — the raw title is a truncation of the text, or, for a
+    // short text, the whole text untruncated.
+    const stripped = title.replace(/…\s*$/, '').trimEnd();
+    if (!stripped) {
+        return false;
+    }
+    return collapsedText.startsWith(stripped) || stripped.startsWith(collapsedText);
+}
+
 /**
- * @param lastPrompt      The session's last prompt, as read from its .jsonl.
+ * @param session         The session's AI title and last prompt, as read from
+ *                        its .jsonl.
  * @param openTabTitles   Titles of the Claude Code tabs currently open in
  *                        this window (vscode.window.tabGroups, filtered to
  *                        the claudeVSCodePanel view type).
  */
-export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]): boolean {
-    const collapsed = collapsePrompt(lastPrompt);
+export function hasMatchingOpenTab(session: TabTitleSource, openTabTitles: string[]): boolean {
+    const candidates = [collapsePrompt(session.aiTitle ?? ''), collapsePrompt(session.lastPrompt)]
+        .filter((text) => text !== '');
 
-    // No prompt recorded yet (a session can be up to one message old before
-    // its first last-prompt line lands) — nothing to correlate, so this can
-    // never be evidence the tab is closed.
-    if (!collapsed) {
+    // Neither a title nor a prompt recorded yet (a session can be up to one
+    // message old before its first lines land) — nothing to correlate, so
+    // this can never be evidence the tab is closed.
+    if (candidates.length === 0) {
         return true;
     }
 
-    return openTabTitles.some((title) => {
-        // Strip a trailing ellipsis left by VS Code's own truncation before
-        // comparing — the raw title is a truncation of the prompt, or, for a
-        // short prompt, the whole prompt untruncated.
-        const stripped = title.replace(/…\s*$/, '').trimEnd();
-        if (!stripped) {
-            return false;
-        }
-        return collapsed.startsWith(stripped) || stripped.startsWith(collapsed);
-    });
+    return openTabTitles.some((title) =>
+        candidates.some((text) => titleMatchesText(title, text))
+    );
 }
 
 /**
@@ -61,8 +75,8 @@ export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]):
  * that as "the whole mechanism is broken" throws away the filter exactly
  * when it just did its job.
  *
- * Instead: trust the mechanism if *any* session that has a recorded prompt
- * matches *some* open tab. A session with no recorded prompt is not
+ * Instead: trust the mechanism if *any* session that has a recorded title
+ * or prompt matches *some* open tab. A session with neither recorded is not
  * evidence either way — hasMatchingOpenTab always passes it regardless of
  * whether matching is actually working, so it can't confirm anything.
  * Zero open tabs detected at all is treated as untrustworthy too: it's
@@ -76,7 +90,7 @@ export function hasMatchingOpenTab(lastPrompt: string, openTabTitles: string[]):
  * existing behaviour rather than hiding every active session.
  */
 export function detectionLooksReliable(
-    sessions: { lastPrompt: string }[],
+    sessions: TabTitleSource[],
     openTabTitles: string[]
 ): boolean {
     if (sessions.length === 0) {
@@ -86,10 +100,12 @@ export function detectionLooksReliable(
         return false;
     }
 
-    const withPrompt = sessions.filter((s) => collapsePrompt(s.lastPrompt) !== '');
-    if (withPrompt.length === 0) {
+    const withEvidence = sessions.filter(
+        (s) => collapsePrompt(s.aiTitle ?? '') !== '' || collapsePrompt(s.lastPrompt) !== ''
+    );
+    if (withEvidence.length === 0) {
         return true;
     }
 
-    return withPrompt.some((s) => hasMatchingOpenTab(s.lastPrompt, openTabTitles));
+    return withEvidence.some((s) => hasMatchingOpenTab(s, openTabTitles));
 }
