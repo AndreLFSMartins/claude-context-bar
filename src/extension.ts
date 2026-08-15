@@ -9,6 +9,8 @@ import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessio
 import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
 import { buildItemLabel } from './tabLabel';
 import { hasMatchingOpenTab, detectionLooksReliable } from './openTabMatch';
+import { deriveProjectName } from './projectName';
+import { extractUserPromptText } from './userPromptText';
 
 interface SessionInfo {
     projectName: string;
@@ -18,6 +20,7 @@ interface SessionInfo {
     entrypoint: string;
     lastPrompt: string;
     aiTitle: string;
+    derivedPrompt: string;
     sessionFile: string;
     inputTokens: number;
     cacheReadTokens: number;
@@ -220,6 +223,8 @@ interface TokenUsage {
     entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
     lastPrompt: string;   // Latest user prompt — what the Claude Code tab shows until an AI title exists
     aiTitle: string;      // AI-generated session title — what the tab shows once generated ('' before that)
+    derivedPrompt: string; // Latest prompt read from the messages, for sessions that emit neither line
+    cwd: string;          // Working directory the session runs in, as recorded on its lines
 }
 
 // Fuzzy emoji matching based on project name
@@ -338,7 +343,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
         try {
             const stats = fs.statSync(jsonlPath);
             if (stats.size === 0) {
-                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '' });
+                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', derivedPrompt: '', cwd: '' });
                 return;
             }
 
@@ -389,6 +394,8 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
             let entrypoint = '';
             let lastPrompt = '';
             let aiTitle = '';
+            let derivedPrompt = '';
+            let cwd = '';
             let finalUsage ={ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
 
             // Forward pass from start index to find metadata and latest usage
@@ -421,6 +428,26 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // regenerated after a /clear (scan already starts there).
                     if (entry.type === 'ai-title' && typeof entry.aiTitle === 'string') {
                         aiTitle = entry.aiTitle;
+                    }
+
+                    // Working directory of the session itself. A subagent
+                    // running in a worktree records its own cwd, so only the
+                    // main thread's lines count — the first one wins.
+                    if (!cwd && typeof entry.cwd === 'string' && entry.isSidechain !== true) {
+                        cwd = entry.cwd;
+                    }
+
+                    // Latest typed prompt, recovered from the messages for
+                    // sessions that never emit a last-prompt line (bridged
+                    // ones). Latest wins, matching how the tab retitles itself.
+                    // isMeta marks content a skill or hook injected as if the
+                    // user had sent it, so it never reaches the label.
+                    if (entry.type === 'user' && entry.isSidechain !== true &&
+                        entry.isMeta !== true && entry.message?.content) {
+                        const typed = extractUserPromptText(entry.message.content);
+                        if (typed) {
+                            derivedPrompt = typed;
+                        }
                     }
 
                     // Look for first user message (for display)
@@ -466,11 +493,13 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                 wasCleared,
                 entrypoint,
                 lastPrompt,
-                aiTitle
+                aiTitle,
+                derivedPrompt,
+                cwd
             });
 
         } catch (e) {
-            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '' });
+            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', derivedPrompt: '', cwd: '' });
         }
     });
 }
@@ -562,7 +591,11 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                     // otherwise compete with real tabs for status bar slots.
                     if (!showScheduledTasks && isScheduledTask(usage.firstMessage)) continue;
 
+                    // The encoded directory name cannot say which dashes are
+                    // path separators, so the cwd the session recorded names
+                    // the project when it is available.
                     const { name, fullPath } = decodeProjectPath(projectDir);
+                    const projectName = deriveProjectName(usage.cwd, name);
                     // Extract short session ID from filename (display only — the
                     // Claude Code command needs the full id, kept separately)
                     const fullSessionId = file.name.replace('.jsonl', '');
@@ -570,13 +603,14 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                     // Auto-detect context limit based on model
                     const sessionContextLimit = getContextLimitForModel(usage.model, contextLimit, modelContextLimits);
                     sessions.push({
-                        projectName: name,
-                        projectPath: fullPath,
+                        projectName,
+                        projectPath: usage.cwd || fullPath,
                         sessionId,
                         fullSessionId,
                         entrypoint: usage.entrypoint,
                         lastPrompt: usage.lastPrompt,
                         aiTitle: usage.aiTitle,
+                        derivedPrompt: usage.derivedPrompt,
                         sessionFile: file.path,
                         inputTokens: usage.inputTokens,
                         cacheReadTokens: usage.cacheReadTokens,
@@ -805,6 +839,7 @@ async function refreshAllSessions() {
         const displayName = buildItemLabel({
             aiTitle: session.aiTitle,
             lastPrompt: session.lastPrompt,
+            derivedPrompt: session.derivedPrompt,
             fallbackName: projectLabel,
             length: tabNameLength
         });

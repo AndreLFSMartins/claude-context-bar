@@ -130,3 +130,53 @@ describe('buildItemLabel with an AI-generated session title', () => {
         );
     });
 });
+
+describe('buildItemLabel for sessions that record no title or prompt line', () => {
+    test('uses the prompt read from the messages themselves', () => {
+        // Bridge sessions (Claude Code opened through the claude.ai bridge)
+        // write user/assistant messages but never a `last-prompt` or
+        // `ai-title` line, so without this they showed the project name.
+        assert.strictEqual(
+            buildItemLabel({
+                aiTitle: '',
+                lastPrompt: '',
+                derivedPrompt: 'roda a manutenção',
+                fallbackName: 'ormah',
+                length: 6
+            }),
+            'roda a'
+        );
+    });
+
+    test('the recorded title still wins over the derived prompt', () => {
+        assert.strictEqual(
+            buildItemLabel({
+                aiTitle: 'Título real',
+                lastPrompt: '',
+                derivedPrompt: 'mensagem antiga',
+                fallbackName: 'ormah',
+                length: 6
+            }),
+            'Título'
+        );
+    });
+
+    test('the recorded prompt still wins over the derived one', () => {
+        assert.strictEqual(
+            buildItemLabel({
+                lastPrompt: 'faz o merge',
+                derivedPrompt: 'mensagem antiga',
+                fallbackName: 'ormah',
+                length: 6
+            }),
+            'faz o'
+        );
+    });
+
+    test('falls back to the project name when the derived prompt is empty too', () => {
+        assert.strictEqual(
+            buildItemLabel({ aiTitle: '', lastPrompt: '', derivedPrompt: '  ', fallbackName: 'ormah', length: 6 }),
+            'ormah'
+        );
+    });
+});

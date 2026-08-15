@@ -21,12 +21,15 @@
  */
 
 /**
- * @param aiTitle       AI-generated session title from the session file, or
- *                      ''/absent while none has been generated yet.
- * @param lastPrompt    Latest user prompt from the session file, or '' when the
- *                      session records none (roughly one in eight).
- * @param fallbackName  Project name to use when there is no title or prompt.
- * @param length        Characters to keep. Zero or less turns the feature off.
+ * @param aiTitle        AI-generated session title from the session file, or
+ *                       ''/absent while none has been generated yet.
+ * @param lastPrompt     Latest user prompt from the session file, or '' when the
+ *                       session records none (roughly one in eight).
+ * @param derivedPrompt  Latest prompt read from the messages themselves, for
+ *                       sessions that emit neither line at all (bridged ones) —
+ *                       see userPromptText.ts.
+ * @param fallbackName   Project name to use when there is no title or prompt.
+ * @param length         Characters to keep. Zero or less turns the feature off.
  */
 /**
  * Collapse whitespace to single spaces and trim, so a prompt that opens
@@ -41,10 +44,11 @@ export function collapsePrompt(text: string): string {
 export function buildItemLabel(opts: {
     aiTitle?: string;
     lastPrompt: string;
+    derivedPrompt?: string;
     fallbackName: string;
     length: number;
 }): string {
-    const { aiTitle, lastPrompt, fallbackName, length } = opts;
+    const { aiTitle, lastPrompt, derivedPrompt, fallbackName, length } = opts;
 
     if (length <= 0) {
         return fallbackName;
@@ -53,7 +57,11 @@ export function buildItemLabel(opts: {
     // A prompt can open with a heading, a blank line, or pasted indentation.
     // Collapsing first stops the visible characters from being spent on
     // whitespace and keeps the label on one line.
-    const collapsed = collapsePrompt(aiTitle ?? '') || collapsePrompt(lastPrompt);
+    // The lines the tab itself titles from come first; the text recovered from
+    // the messages is only for sessions that emit neither.
+    const collapsed = collapsePrompt(aiTitle ?? '')
+        || collapsePrompt(lastPrompt)
+        || collapsePrompt(derivedPrompt ?? '');
     if (!collapsed) {
         return fallbackName;
     }

@@ -2,6 +2,27 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.2] - 2026-08-15
+
+### Fixed
+- **Status bar items no longer read as an acronym of the path.** A session in
+  `~/Documents/GitHub/Tools/ormah` showed up as `GHTO`: the project name was built by joining the
+  last three segments of the *encoded* directory name (`GitHub-Tools-ormah`), which `compactMode`
+  then acronymed. The encoding replaces every separator with a dash, so it cannot say which dashes
+  are separators and which belong to the folder name — but every session line records the real
+  `cwd`, so the project is now named after that folder (`ormah`), with the old decoding kept as the
+  fallback. The tooltip's path comes from the same `cwd` and is likewise exact for folders whose
+  name contains a dash.
+- **Bridged sessions get a real label instead of the project name.** Sessions opened through the
+  claude.ai bridge (`{"type":"bridge-session"}`) write ordinary messages but never emit the
+  `{"type":"last-prompt"}` or `{"type":"ai-title"}` lines the item labels itself with, so they fell
+  all the way back to the project name. The latest prompt is now recovered from the messages
+  themselves when neither line exists, ignoring what the user did not type: slash commands,
+  skill/hook injections (`isMeta`), subagent messages (`isSidechain`), interruption markers, task
+  notifications, and system reminders. Sessions that do emit those lines are unaffected, and the
+  recovered text is deliberately not used for closed-tab matching, which still relies only on the
+  texts the tab actually titles itself with.
+
 ## [1.8.1] - 2026-08-14
 
 ### Fixed
