@@ -179,4 +179,30 @@ describe('buildItemLabel for sessions that record no title or prompt line', () =
             'ormah'
         );
     });
+
+    test('prefers the name set with /rename over the AI title', () => {
+        assert.strictEqual(
+            buildItemLabel({
+                customTitle: 'Seguros',
+                aiTitle: 'Resume handoff',
+                lastPrompt: 'continue',
+                fallbackName: 'AndreMartins',
+                length: 12
+            }),
+            'Seguros'
+        );
+    });
+
+    test('ignores a blank custom title and falls through to the AI title', () => {
+        assert.strictEqual(
+            buildItemLabel({
+                customTitle: '  ',
+                aiTitle: 'Resume handoff',
+                lastPrompt: 'continue',
+                fallbackName: 'AndreMartins',
+                length: 6
+            }),
+            'Resume'
+        );
+    });
 });

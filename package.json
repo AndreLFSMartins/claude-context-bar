@@ -2,7 +2,7 @@
     "name": "claude-context-bar-fork",
     "displayName": "Claude Context Bar (fork)",
     "description": "Real-time context window usage monitor for Claude Code sessions. Fork: shows only the current window's sessions, hides scheduled tasks, and no longer truncates the list to 5 items silently.",
-    "version": "1.8.2",
+    "version": "1.8.5",
     "publisher": "andremartins",
     "author": {
         "name": "Ed Zisk",

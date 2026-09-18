@@ -2,6 +2,89 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.5] - 2026-09-18
+
+### Fixed
+- **A live session no longer disappears from the bar while its tab label catches up.**
+  `hasMatchingOpenTab` compares against the one title the tab shows, so the moment a
+  `/rename` or a first `ai-title` lands in the `.jsonl` the session stops matching — and the
+  `.jsonl` write is itself what triggers the refresh. `detectionLooksReliable` turns the
+  filter ON as soon as any *other* session matches, so the still-open session was dropped.
+  The 1.8.4 comment claiming this cost "one refresh of flicker" was wrong: nothing restored
+  the session until the next timer tick. A session that matched on the previous refresh now
+  gets exactly one refresh of grace, and the extension subscribes to
+  `tabGroups.onDidChangeTabs` so the bar re-evaluates the instant a tab retitles instead of
+  waiting out `refreshInterval`. A session that never matched gets no grace, which is what
+  keeps the closed-tab ghost filter intact.
+- **Terminal, SDK and Claude Desktop sessions are no longer evicted for having no editor
+  tab.** The open-tab cross-check applied to every session regardless of origin, but only a
+  `claude-vscode` session has a tab in `tabGroups` to match. A CLI session survived only
+  until some unrelated IDE session made detection look reliable, and then vanished. Of 363
+  session files written in the week to 2026-09-18, 147 (40%) had a non-IDE entrypoint, and
+  all 363 recorded an entrypoint, so the check now judges IDE sessions only.
+- **Two projects that share a folder name no longer hide each other.** `deriveProjectName`
+  names a project after its own folder, so `/work/team-a/api` and `/work/team-b/api` both
+  read as `api`. That name keyed the supersession groups, so opening a session in one
+  project superseded a still-open session in the other. Grouping is keyed by the project
+  path now; `projectName` stays a display label.
+
+### Changed
+- Grouping, supersession and numbering moved out of `findActiveSessions` into
+  `sessionGroups.ts`, with tests. Being inline and untested is why the grouping-key defect
+  went unnoticed.
+
+All three defects were found by the Dev Council on 1.8.4 (run `8e85fa04-0392ed52-7b7863d9`),
+each reported with a reproduction and each confirmed against the source before the fix. The
+suite goes from 126 to 147 tests; the three new assertions were each shown to fail with
+their fix reverted.
+
+## [1.8.4] - 2026-09-18
+
+### Fixed
+- **A closed tab no longer keeps its status bar item alive by colliding with an unrelated
+  open tab.** Two separate holes, both found by the Dev Council on 1.8.3 and both reproduced
+  against the real modules before and after the fix:
+  - `hasMatchingOpenTab` matched a session when *any* of its `custom-title`, `ai-title` or
+    `last-prompt` texts corresponded to an open tab. A tab shows exactly one of those, so a
+    renamed session whose tab was closed survived whenever some other open tab happened to be
+    titled from its leftover prompt. It now matches the one title the tab is showing, using the
+    same `customTitle || aiTitle || lastPrompt` chain as `buildItemLabel`.
+  - `titleMatchesText` accepted a tab title that merely *started with* the recorded text, on top
+    of the correct direction. A closed session named `Auth` matched an open tab titled
+    `Authentication` and stayed on the bar. Harmless while the only texts were long prompts and
+    AI titles; `/rename` made short titles ordinary, so the reverse direction is gone. Ellipsis
+    truncation still matches, as before.
+
+  The cost is one refresh of flicker between a `/rename` landing in the `.jsonl` and the webview
+  retitling its tab. `detectionLooksReliable()` still bounds it.
+
+### Documentation
+- The `custom-title.json` sidecar is still not read, and the comment saying so now names the real
+  ceiling: a sidecar-only renamed session is not merely mislabelled, it is dropped from the bar
+  once another session switches the filter on. Left as is because the state does not occur here —
+  of 187 sessions, 2 carry a sidecar and both also carry the transcript line, with the same value.
+- `CLAUDE.md` lists `{"type":"custom-title"}` among the consumed JSONL fields.
+
+## [1.8.3] - 2026-09-18
+
+### Fixed
+- **A renamed session now shows the name you gave it.** `/rename` writes
+  `{"type":"custom-title"}` to the session's `.jsonl`, and the Claude Code tab retitles itself from
+  it — verified in the Claude Code extension bundle 2.1.276: the webview renames the tab to the
+  session's `summary`, which resolves as
+  `customTitle || aiTitle || lastPrompt || summaryHint || firstPrompt`. The extension read only the
+  last three, so a renamed session's item carried a stale AI title or prompt while its tab showed
+  the new name. `buildItemLabel` and `hasMatchingOpenTab` now read `custom-title` first, in the
+  tab's own order. Only the in-transcript line is read, not the
+  `<sessionId>/custom-title.json` sidecar Claude Code falls back to (2 of 187 sessions on the
+  development machine).
+
+### Documentation
+- The 1.7.0 entry described the click as delegating to `claude-vscode.editor.open`. It has
+  delegated to `claude-vscode.primaryEditor.open` since 1.7.1, precisely because the other command
+  writes `claudeCode.preferredLocation` into the user's global settings as a side effect. The entry
+  now says so, so the side effect is not reintroduced by a reader following the CHANGELOG.
+
 ## [1.8.2] - 2026-08-15
 
 ### Fixed
@@ -43,8 +126,11 @@ VS Code marketplace auto-update cannot overwrite these changes.
 
 ### Changed
 - **Clicking a status bar item now opens that session's Claude Code tab** instead of hiding the
-  item. It delegates to the Claude Code extension's private `claude-vscode.editor.open` command,
-  which reveals the webview panel matching the session id. Two guards keep it safe: the session's
+  item. It delegates to the Claude Code extension's private
+  `claude-vscode.primaryEditor.open` command, which reveals the webview panel matching the session
+  id. It is deliberately *not* `claude-vscode.editor.open`: that one writes
+  `claudeCode.preferredLocation` into the user's global settings as a side effect. Two guards keep
+  it safe: the session's
   `entrypoint` must be `claude-vscode` (terminal, SDK, and Claude Desktop sessions have no tab, and
   calling the command with an id the extension does not know would create an unwanted tab), and the
   command must actually be registered. Either guard failing shows a message and opens nothing.
