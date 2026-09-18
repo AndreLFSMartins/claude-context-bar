@@ -41,7 +41,8 @@ Fork of [edenaion/claude-context-bar](https://github.com/edenaion/claude-context
 
 - `npm run lint` is declared in `package.json` but **eslint is not installed** and there is no eslint config — the script fails. There is no working linter; rely on `tsc --strict` and review.
 - `npm run package` / `npm run publish` call a bare `vsce`, which is not in `devDependencies`. Use `npx @vscode/vsce` instead.
-- Publishing is done by CI, not by hand: a pushed `v*` tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml), which publishes to the VS Code Marketplace and to Open VSX.
+- **This fork is not published anywhere, and the CI that would publish it does not work.** [.github/workflows/publish.yml](.github/workflows/publish.yml) fires on a `v*` tag and targets the VS Code Marketplace and Open VSX, but in this fork it has never run and its secrets are absent — `gh secret list` returns empty and `gh run list` returns none (verified 2026-09-18, with `ADMIN` permission, so the empty list is real and not a permissions artifact). Pushing a version tag starts a run that fails at the publish step. The tags present (`v1.4.0`…`v1.6.0`) were inherited from upstream and predate the fork's own versions.
+- **Deploy = install the `.vsix` locally.** `npx @vscode/vsce package`, then `code --install-extension claude-context-bar-fork-<version>.vsix`, then reload the window. The extension is for André's machine only. Do not propose publishing without being asked; if it is ever wanted, `VSCE_PAT` and `OVSX_PAT` must be set first and the `andremartins` publisher must exist (unverified).
 
 ## Architecture
 

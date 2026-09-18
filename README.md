@@ -1,6 +1,11 @@
-# Claude Context Bar
+# Claude Context Bar (personal fork)
 
 **Real-time context window monitor for Claude Code sessions in VS Code**
+
+> A personal fork of [edenaion/claude-context-bar](https://github.com/edenaion/claude-context-bar),
+> built for my own machine and **not published to any marketplace**. Install it from a local
+> `.vsix` — see [Install](#install). What this fork changes is listed under
+> [Differences from upstream](#differences-from-upstream).
 
 ## Features
 
@@ -51,9 +56,47 @@
 - VS Code 1.74.0 or later
 - [Claude Code](https://marketplace.visualstudio.com/items?itemName=anthropic.claude-code) extension installed and active
 
-**Install:**
-- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=ezoosk.claude-context-bar)
-- [Open VSX Registry](https://open-vsx.org/extension/ezoosk/claude-context-bar) (for Antigravity, VSCodium, etc.)
+## Install
+
+This fork is not on any marketplace. Build it and install the `.vsix`:
+
+```bash
+npm install
+npm run compile
+npx @vscode/vsce package                              # writes claude-context-bar-fork-<version>.vsix
+code --install-extension claude-context-bar-fork-1.8.5.vsix
+```
+
+Then reload the VS Code window. Repeat after every version bump; `code --install-extension`
+overwrites the previous build in place.
+
+The upstream extension is published as `ezoosk.claude-context-bar` on the
+[VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=ezoosk.claude-context-bar)
+and [Open VSX](https://open-vsx.org/extension/ezoosk/claude-context-bar). That is a
+**different** extension — it does not carry the changes below. Install one or the other, not
+both: two extensions writing to the same status bar is a mess.
+
+### Publishing is not set up, on purpose
+
+`.github/workflows/publish.yml` fires on a `v*` tag and would publish to both registries,
+but it has never run in this fork and its `VSCE_PAT` / `OVSX_PAT` secrets do not exist
+(verified 2026-09-18: `gh secret list` returns empty, `gh run list` returns none). Pushing a
+version tag would start a run that fails at the publish step. If this ever needs to ship,
+set both secrets first and confirm the `andremartins` publisher exists.
+
+## Differences from upstream
+
+- Shows only sessions whose working directory is inside this window's workspace folders
+  (`onlyCurrentWindow`, default on).
+- Drops a session as soon as its Claude Code tab is closed, instead of waiting out
+  `idleTimeout`. Only IDE sessions are judged this way — a terminal, SDK or Desktop session
+  has no tab to match against, so it is never evicted for lacking one.
+- Labels each item with the session's own text (the name from `/rename`, else the AI title,
+  else the last prompt), not the project name.
+- Hides scheduled and background runs (`showScheduledTasks`, default off).
+- Caps the number of status bar items (`maxItems`, default 12) instead of a silent hardcoded
+  5, and logs to the console when the cap drops something.
+- Clicking an item reveals that session's tab.
 
 ## Configuration
 
@@ -72,6 +115,9 @@
 | `claudeContextBar.usageRefreshInterval` | `60` | How often (seconds) to refresh subscription usage from the `/usage` endpoint |
 | `claudeContextBar.refreshInterval` | `30` | Refresh interval in seconds |
 | `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before a session drops off the bar (3 minutes). Set `0` to keep idle sessions forever |
+| `claudeContextBar.onlyCurrentWindow` | `true` | Show only sessions whose working directory is inside this window's workspace folders. Turning it off also turns off the closed-tab check, since that only makes sense within one window |
+| `claudeContextBar.showScheduledTasks` | `false` | Show scheduled and background runs. They are sessions but not tabs, so by default they don't compete for status bar slots |
+| `claudeContextBar.maxItems` | `12` | Maximum status bar items. Anything dropped by the cap is logged to the console rather than vanishing silently. `0` disables the cap |
 | `claudeContextBar.tabNameLength` | `6` | Characters of the Claude Code tab's own name (your latest prompt) to show instead of the project name. `0` shows the project name |
 | `claudeContextBar.compactMode` | `false` | Shorten project names to save status bar space |
 | `claudeContextBar.shortNames` | `{}` | Custom short names for projects (e.g., `{"my-project": "MP"}`) |
