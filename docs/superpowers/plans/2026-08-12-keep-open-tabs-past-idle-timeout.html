@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keep Open Tabs Past Idle Timeout Implementation Plan</title>
+<style>
+/* rich-doc design system — Anthropic brand, document-oriented.
+   Light paper/ink, Lora italic display, Poppins body, system mono.
+   Hard rules honored: ONE accent per piece, no gradients, no drop-shadow,
+   monogram always ink, hairlines 1px/2px only. Inline this whole file into a
+   single <style>. Fonts come from Google Fonts (the only external request);
+   everything degrades to system serif/sans/mono offline. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root{
+  /* Anthropic brand */
+  --paper:#faf9f5; --ink:#141413; --stone:#b0aea5; --hairline:#e8e6dc;
+  --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+  --accent:var(--orange);            /* fixed primary accent */
+  --font-head:"Poppins",Arial,sans-serif;
+  --font-body:"Lora",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --lh-body:1.55; --lh-title:1.12; --maxw:1140px;
+}
+[data-mode="dark"]{--paper:#141413; --ink:#faf9f5; --stone:#8a8780; --hairline:#2a2926}
+
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/var(--lh-body) var(--font-body);
+  display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+
+/* ---- TOC sidebar ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  border-right:1px solid var(--hairline);padding:46px 30px}
+nav.toc .eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);margin-bottom:14px}
+nav.toc .doc-title{font:400 italic 30px/1.1 var(--font-body);
+  letter-spacing:-.005em;margin:0 0 26px;color:var(--ink)}
+nav.toc a{display:block;color:var(--stone);text-decoration:none;font-size:14.5px;font-family:var(--font-head);
+  padding:5px 0;border:none}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.lvl-3{padding-left:16px;font-size:13.5px}
+
+/* ---- main column ---- */
+main{padding:56px 72px 140px;max-width:var(--maxw)}
+.eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
+.meta{font:400 13px/1.4 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+h2{font:600 30px/var(--lh-title) var(--font-head);letter-spacing:-.015em;margin:56px 0 16px;
+  padding-bottom:10px;border-bottom:1px solid var(--hairline);scroll-margin-top:24px}
+h2:first-of-type{margin-top:0}
+/* anchor word inside a title → Lora italic, accent */
+h2 em,.anchor{font:400 italic 1.1em/1 var(--font-body);color:var(--accent);
+  letter-spacing:-.005em}
+h3{font:600 20px/1.2 var(--font-head);margin:34px 0 10px;scroll-margin-top:24px}
+p,li{color:var(--ink)} strong{font-weight:700}
+a{color:var(--accent);text-underline-offset:2px}
+a.backlink{float:right;font:400 12px/1.6 var(--font-head);color:var(--stone);text-decoration:none}
+a.backlink:hover{color:var(--accent)}
+
+/* pull statement — Lora italic protagonist */
+.statement{font:400 italic 26px/1.25 var(--font-body);
+  letter-spacing:-.01em;color:var(--ink);margin:26px 0;max-width:24em;text-wrap:pretty}
+
+/* ---- callout: single accent, hairline, no shadow ---- */
+.callout{border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  background:transparent;padding:14px 20px;margin:20px 0}
+.callout .label{font:500 11px/1 var(--font-head);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--accent);display:block;margin-bottom:8px}
+.callout.warn .label::after{content:" — watch out"}
+
+/* ---- chips ---- */
+.chip{display:inline-block;font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 9px;border:1px solid var(--hairline);color:var(--stone);margin:0 5px 5px 0}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+
+/* ---- tables: hairlines + mono headers, no heavy fills ---- */
+table{border-collapse:collapse;width:100%;margin:20px 0;font-size:15px;border:1px solid var(--hairline)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--hairline)}
+th{font:500 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+tr:last-child td{border-bottom:none}
+td .yes{color:var(--accent);font-weight:700} td .no{color:var(--ink);font-weight:700}
+
+/* ---- figure / diagram ---- */
+figure{margin:26px 0;padding:22px;border:1px solid var(--hairline);text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{margin-top:12px;font:400 13px/1.4 var(--font-head);color:var(--stone);
+  text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- code / details ---- */
+code{font:14px var(--font-mono);color:var(--accent)}
+pre{border:1px solid var(--hairline);padding:16px;overflow-x:auto;font:13px/1.6 var(--font-mono);color:var(--ink)}
+pre code{color:inherit}
+details{border:1px solid var(--hairline);padding:4px 18px;margin:16px 0}
+summary{cursor:pointer;font:500 14px/1 var(--font-head);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--stone);padding:12px 0}
+summary:hover{color:var(--accent)}
+
+/* ---- signature: monogram (always ink) + spectrum bar ---- */
+.spectrum{display:flex;height:4px;margin:40px 0 22px}
+.spectrum span{flex:1}
+.spectrum .s1{background:var(--orange)} .spectrum .s2{background:var(--blue)} .spectrum .s3{background:var(--green)}
+.signature{display:flex;flex-direction:column;gap:3px;color:var(--stone);
+  border-left:2px solid var(--accent);padding-left:16px}
+.signature .name{font:400 italic 18px/1 var(--font-body);color:var(--ink)}
+.signature .role{font:400 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.06em;color:var(--stone)}
+
+/* ---- phase color-coding: thin left bar, accent cycles ---- */
+.phase{display:flex;align-items:baseline;gap:10px;font:500 16px/1.4 var(--font-head);
+  padding:7px 0 7px 13px;border-left:3px solid var(--stone);margin:6px 0}
+.phase .pn{font:600 10px/1 var(--font-head);letter-spacing:.1em;text-transform:uppercase;color:var(--stone)}
+.phase.p-o{border-color:var(--orange)} .phase.p-b{border-color:var(--blue)} .phase.p-g{border-color:var(--green)}
+
+/* ---- metrics row: large numbers ---- */
+.metrics{display:flex;gap:28px;margin:24px 0;padding:18px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.metrics .metric{flex:0 1 auto}
+.metrics .big{font:700 34px/1 var(--font-head);color:var(--orange)}
+.metrics .label{font:500 11px/1 var(--font-head);letter-spacing:.08em;text-transform:uppercase;color:var(--stone);margin-top:6px}
+
+/* ---- status chips: done / active / todo ---- */
+.schip{display:inline-block;font:600 11px/1 var(--font-head);letter-spacing:.05em;text-transform:uppercase;
+  padding:5px 10px;border-radius:20px;margin:0 5px 5px 0}
+.schip.done{background:var(--green);color:#fff}
+.schip.active{background:var(--orange);color:#fff}
+.schip.todo{background:var(--hairline);color:var(--stone)}
+
+/* ---- progress bar ---- */
+.progress{margin:18px 0}
+.progress .bar{height:8px;border-radius:6px;background:var(--hairline);overflow:hidden}
+.progress .fill{height:100%;background:var(--orange)}
+.progress .label{font:500 12px/1 var(--font-head);color:var(--stone);margin-top:6px}
+
+@media(max-width:880px){
+  body{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--hairline)}
+  main{padding:32px 24px 90px}
+}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="eyebrow">[ PLAN ]</div>
+  <div class="doc-title">Keep Open Tabs Past Idle Timeout Implementation Plan</div>
+  <a href="#architecture">Architecture</a>
+  <a href="#global-constraints">Global Constraints</a>
+  <a href="#task-1-matchingopenTab-title" class="lvl-3">Task 1: matchingOpenTabTitle — pure primitive, hasMatchingOpenTab refactored to use it</a>
+  <a href="#task-2-extract-buildsessioninfo" class="lvl-3">Task 2: Extract buildSessionInfo — no behavior change</a>
+  <a href="#task-3-pass-2-resurrect-sessions" class="lvl-3">Task 3: Pass 2 — resurrect sessions for still-open, gone-idle tabs</a>
+  <a href="#self-review-notes">Self-Review Notes</a>
+</nav>
+<main>
+<div class="eyebrow">Implementation Plan</div>
+
+<h1><em>Keep Open Tabs</em> Past Idle Timeout</h1>
+
+<p class="statement">A Claude Code tab confirmed open via <code>vscode.window.tabGroups</code> never disappears from the status bar purely because <code>idleTimeout</code> elapsed — only demand-driven extra reads (bounded per project), never a full-history scan.</p>
+
+<div class="metrics">
+    <div class="metric">
+        <div class="big">3</div>
+        <div class="label">Tasks</div>
+    </div>
+    <div class="metric">
+        <div class="big">15</div>
+        <div class="label">Steps</div>
+    </div>
+    <div class="metric">
+        <div class="big">TypeScript 5</div>
+        <div class="label">Stack</div>
+    </div>
+</div>
+
+<div class="progress">
+    <div class="fill" style="width: 0%"></div>
+</div>
+
+<div style="display: flex; gap: 0.5rem; margin: 1rem 0;">
+    <span class="schip todo">0 Done</span>
+    <span class="schip active">15 In Progress</span>
+</div>
+
+<h2 id="architecture">Architecture</h2>
+
+<p><code>findActiveSessions</code> gains a second, conditional pass: after the normal within-<code>idleTimeout</code> scan, if any currently-open tab has no matching session yet, read that project's older files one at a time (newest-first) until every open tab is accounted for or a per-project cap is hit. A new pure primitive in <code>openTabMatch.ts</code>, <code>matchingOpenTabTitle</code>, backs both the existing ghost-drop filter (refactored to use it) and this new search.</p>
+
+<h2 id="global-constraints">Global Constraints</h2>
+
+<ul>
+    <li>No new <code>claudeContextBar.*</code> setting (spec Non-goals) — the per-project extra-scan cap is an internal constant.</li>
+    <li>Pass 2 must never run when <code>unmatchedTitles</code> is empty — zero extra file reads in the common case (spec Design).</li>
+    <li>Pass 2 is bounded at 20 files per project (<code>MAX_EXTRA_SCAN_PER_PROJECT</code>) regardless of how large that project's history is (spec Risks; verified one local project has 930 <code>.jsonl</code> files).</li>
+    <li>Only applies when <code>onlyCurrentWindow</code> is <code>true</code> and <code>detectionLooksReliable</code> returns <code>true</code> — same gate as the closed-tab-ghosts fix (spec Non-goals).</li>
+    <li>4-space indentation, existing code style in <code>src/</code> (project CLAUDE.md).</li>
+</ul>
+
+<div class="phase p-o">
+    <span class="pn">1</span> Extract Primitive
+</div>
+
+<h3 id="task-1-matchingopenTab-title">Task 1: <code>matchingOpenTabTitle</code> — pure primitive, <code>hasMatchingOpenTab</code> refactored to use it</h3>
+
+<p class="meta">Files: <code>src/openTabMatch.ts</code>, <code>src/openTabMatch.test.ts</code></p>
+
+<p><strong>Interfaces:</strong></p>
+<ul>
+    <li>Consumes: <code>collapsePrompt</code> from <code>./tabLabel</code> (already imported).</li>
+    <li>Produces: <code>export function matchingOpenTabTitle(lastPrompt: string, openTabTitles: string[]): string | undefined</code>. Used by <code>src/extension.ts</code> in Task 3 (Pass 2 matching and removal from <code>unmatchedTitles</code>).</li>
+    <li><code>hasMatchingOpenTab</code>'s existing signature and exported behavior are unchanged — this is a refactor, not a behavior change, for every existing caller.</li>
+</ul>
+
+<details>
+    <summary>Step 1: Write the failing tests</summary>
+    <p>Add to <code>src/openTabMatch.test.ts</code>, after the closing <code>});</code> of the <code>hasMatchingOpenTab</code> describe block and before the <code>describe('detectionLooksReliable', ...)</code> block:</p>
+    <pre><code class="language-ts">describe('matchingOpenTabTitle', () => {
+    test('returns the title whose ellipsis-truncated prefix matches the prompt', () => {
+        assert.strictEqual(
+            matchingOpenTabTitle(
+                'testado. pode fazer merge, push e deploy',
+                ['a versão nova está instalada no vscode ?', 'testado. pode fazer merge, pu…']
+            ),
+            'testado. pode fazer merge, pu…'
+        );
+    });
+
+    test('returns undefined when no title matches', () => {
+        assert.strictEqual(
+            matchingOpenTabTitle('leia o arquivo', ['título completamente diferente']),
+            undefined
+        );
+    });
+
+    test('returns undefined for an empty prompt, even with titles present — no vacuous pass here', () => {
+        assert.strictEqual(
+            matchingOpenTabTitle('', ['qualquer título']),
+            undefined
+        );
+    });
+
+    test('returns the second title when the prompt matches it and not the first', () => {
+        assert.strictEqual(
+            matchingOpenTabTitle('sim', ['não', 'sim']),
+            'sim'
+        );
+    });
+});</code></pre>
+
+    <p>Add the import at the top of the test file:</p>
+    <pre><code class="language-ts">import { hasMatchingOpenTab, detectionLooksReliable, matchingOpenTabTitle } from './openTabMatch';</code></pre>
+</details>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 1: Write the failing tests</strong></li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 2: Run the tests to verify they fail</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Run: <code>npx tsc && node --test out/openTabMatch.test.js</code><br>Expected: FAIL — <code>matchingOpenTabTitle is not a function</code></span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 3: Implement <code>matchingOpenTabTitle</code> and refactor <code>hasMatchingOpenTab</code></strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Replace the existing <code>hasMatchingOpenTab</code> function body in <code>src/openTabMatch.ts</code> with the implementation in the plan.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 4: Run the tests to verify they pass</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Run: <code>npx tsc && node --test out/openTabMatch.test.js</code><br>Expected: all cases pass (17 total in this file)</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 5: Run the full suite and commit</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;"><code>npm test</code> expected to pass; commit with message: <code>"refactor: extract matchingOpenTabTitle, back hasMatchingOpenTab with it"</code></span>
+    </li>
+</ul></p>
+
+<div class="phase p-b">
+    <span class="pn">2</span> Extract Helper
+</div>
+
+<h3 id="task-2-extract-buildsessioninfo">Task 2: Extract <code>buildSessionInfo</code> — no behavior change</h3>
+
+<p class="meta">Files: <code>src/extension.ts</code></p>
+
+<p><strong>Interfaces:</strong></p>
+<ul>
+    <li>Produces: <code>async function buildSessionInfo(file: {name: string; path: string; mtime: Date}, projectDir: string, contextLimit: number, modelContextLimits: Record&lt;string, number&gt;, showScheduledTasks: boolean): Promise&lt;SessionInfo | null&gt;</code>. Used by both passes in <code>findActiveSessions</code> (Task 3).</li>
+    <li>Consumes: <code>getLatestTokenCount</code>, <code>isScheduledTask</code>, <code>decodeProjectPath</code>, <code>getContextLimitForModel</code> — all already imported/defined in this file.</li>
+</ul>
+
+<p class="callout">This task is a pure refactor (extract a function, no logic change) — no test file changes; verified by full-suite green plus a manual read-through diff check in Step 3.</p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 1: Add the helper function</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Insert the <code>buildSessionInfo</code> function immediately above <code>async function findActiveSessions()</code> in <code>src/extension.ts</code>.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 2: Replace the inline session-building loop with a call to the helper</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Refactor the <code>for (const file of files)</code> loop in <code>findActiveSessions</code> to use the new helper.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 3: Diff-check and compile</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Run: <code>npx tsc</code> — re-read the new <code>buildSessionInfo</code> against the block you just deleted side by side.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 4: Run the full suite and commit</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Run: <code>npm test</code> — commit with message: <code>"refactor: extract buildSessionInfo from findActiveSessions"</code></span>
+    </li>
+</ul></p>
+
+<div class="phase p-g">
+    <span class="pn">3</span> Implement Pass 2
+</div>
+
+<h3 id="task-3-pass-2-resurrect-sessions">Task 3: Pass 2 — resurrect sessions for still-open, gone-idle tabs</h3>
+
+<p class="meta">Files: <code>src/extension.ts</code></p>
+
+<p><strong>Interfaces:</strong></p>
+<ul>
+    <li>Consumes: <code>buildSessionInfo</code> (Task 2), <code>matchingOpenTabTitle</code> (Task 1), <code>hasMatchingOpenTab</code>, <code>detectionLooksReliable</code>, <code>getOpenClaudeTabTitles</code> (all already present).</li>
+    <li>Produces: no new exports — <code>findActiveSessions</code>'s returned <code>SessionInfo[]</code> now includes Pass 2 results.</li>
+</ul>
+
+<p class="callout">Covered by the manual gate (Step 4); no dedicated unit test (this function reads the filesystem and is not currently under test).</p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 1: Add the <code>matchingOpenTabTitle</code> import and the scan cap constant</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Update imports in <code>src/extension.ts</code> and add <code>const MAX_EXTRA_SCAN_PER_PROJECT = 20;</code></span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 2: Track each project's beyond-idle files during Pass 1</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Refactor the file-listing logic to collect all files (not just within-cutoff), separate into <code>files</code> and <code>beyondIdleFiles</code>, and track in <code>projectBeyondIdleFiles</code>.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 3: Add Pass 2 between the project loop and the grouping step</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">After Pass 1 filtering (the existing <code>hasMatchingOpenTab</code> check), add the Pass 2 loop that hunts for unmatched open tab titles in older files.</span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 4: Compile, run the full suite, and commit</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">Run: <code>npx tsc && npm test</code> — commit with message: <code>"feat: resurrect sessions for tabs that are open but gone idle"</code></span>
+    </li>
+</ul></p>
+
+<p><ul class="checklist">
+    <li><input type="checkbox" disabled> <strong>Step 5: Manual gate (required)</strong>
+        <br><span style="margin-left: 1.5rem; display: block; color: #b0aea5; font-size: 0.9em;">In the Extension Development Host:
+        <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
+            <li>Set <code>claudeContextBar.idleTimeout</code> to <code>10</code> in workspace settings.</li>
+            <li>Open a Claude Code tab, send one message, note the status bar item.</li>
+            <li>Leave it untouched for at least 15 seconds.</li>
+            <li>Confirm the item is still visible (Pass 2 should resurrect it).</li>
+            <li>Close the tab and confirm it disappears (regression check).</li>
+            <li>Restore the <code>idleTimeout</code> setting.</li>
+            <li>Record the result (pass/fail, observations).</li>
+        </ol>
+        </span>
+    </li>
+</ul></p>
+
+<h2 id="self-review-notes">Self-Review Notes</h2>
+
+<ul>
+    <li><strong>Spec coverage:</strong> Problem/Goal → Task 3 (Pass 2 resurrection). "Search is demand-driven, not size-driven" → Task 3 Step 3 (<code>unmatchedTitles</code>-gated loop, breaks the moment it's empty). <code>matchingOpenTabTitle</code> primitive + <code>hasMatchingOpenTab</code> refactor → Task 1. <code>MAX_EXTRA_SCAN_PER_PROJECT</code> cap → Task 3 Step 1 and enforced in Step 3's inner loop. Non-goals (no new setting, <code>onlyCurrentWindow</code> gate, <code>detectionLooksReliable</code> gate) → Task 3 Step 3 keeps Pass 2 nested inside the existing guards, and the cap stays a <code>const</code>, not a config read. Manual gate → Task 3 Step 5.</li>
+    <li><strong>Placeholder scan:</strong> None found — every step has complete code.</li>
+    <li><strong>Type consistency:</strong> <code>buildSessionInfo</code>'s parameter list and return type (<code>Promise&lt;SessionInfo | null&gt;</code>) match at both call sites (Task 2 Step 2's Pass 1 loop, Task 3 Step 3's Pass 2 loop). <code>matchingOpenTabTitle(lastPrompt: string, openTabTitles: string[]): string | undefined</code> is used identically in its own tests (Task 1) and at both call sites in Task 3.</li>
+</ul>
+  <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+  <div class="signature">
+    <div class="name">rich-doc</div>
+    <div class="role">superpowers companion · Anthropic brand</div>
+  </div>
+</main>
+</body>
+</html>
+<!-- rich-doc-src-sha256:17a1ef755b3b98471f1dc117ffb6c4735fff1da5779182e559f9a3a67182bf76 -->

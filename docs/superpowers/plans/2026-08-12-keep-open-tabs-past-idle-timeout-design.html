@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Keep genuinely open tabs visible past idleTimeout</title>
+<style>
+/* rich-doc design system — Anthropic brand, document-oriented.
+   Light paper/ink, Lora italic display, Poppins body, system mono.
+   Hard rules honored: ONE accent per piece, no gradients, no drop-shadow,
+   monogram always ink, hairlines 1px/2px only. Inline this whole file into a
+   single <style>. Fonts come from Google Fonts (the only external request);
+   everything degrades to system serif/sans/mono offline. */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap');
+
+:root{
+  /* Anthropic brand */
+  --paper:#faf9f5; --ink:#141413; --stone:#b0aea5; --hairline:#e8e6dc;
+  --orange:#d97757; --blue:#6a9bcc; --green:#788c5d;
+  --accent:var(--orange);            /* fixed primary accent */
+  --font-head:"Poppins",Arial,sans-serif;
+  --font-body:"Lora",Georgia,serif;
+  --font-mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --lh-body:1.55; --lh-title:1.12; --maxw:1140px;
+}
+[data-mode="dark"]{--paper:#141413; --ink:#faf9f5; --stone:#8a8780; --hairline:#2a2926}
+
+*{box-sizing:border-box} html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/var(--lh-body) var(--font-body);
+  display:grid;grid-template-columns:300px minmax(0,1fr);min-height:100vh}
+
+/* ---- TOC sidebar ---- */
+nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  border-right:1px solid var(--hairline);padding:46px 30px}
+nav.toc .eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;
+  color:var(--accent);margin-bottom:14px}
+nav.toc .doc-title{font:400 italic 30px/1.1 var(--font-body);
+  letter-spacing:-.005em;margin:0 0 26px;color:var(--ink)}
+nav.toc a{display:block;color:var(--stone);text-decoration:none;font-size:14.5px;font-family:var(--font-head);
+  padding:5px 0;border:none}
+nav.toc a:hover{color:var(--ink)}
+nav.toc a.lvl-3{padding-left:16px;font-size:13.5px}
+
+/* ---- main column ---- */
+main{padding:56px 72px 140px;max-width:var(--maxw)}
+.eyebrow{font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.12em;color:var(--accent)}
+.meta{font:400 13px/1.4 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+h2{font:600 30px/var(--lh-title) var(--font-head);letter-spacing:-.015em;margin:56px 0 16px;
+  padding-bottom:10px;border-bottom:1px solid var(--hairline);scroll-margin-top:24px}
+h2:first-of-type{margin-top:0}
+/* anchor word inside a title → Lora italic, accent */
+h2 em,.anchor{font:400 italic 1.1em/1 var(--font-body);color:var(--accent);
+  letter-spacing:-.005em}
+h3{font:600 20px/1.2 var(--font-head);margin:34px 0 10px;scroll-margin-top:24px}
+p,li{color:var(--ink)} strong{font-weight:700}
+a{color:var(--accent);text-underline-offset:2px}
+a.backlink{float:right;font:400 12px/1.6 var(--font-head);color:var(--stone);text-decoration:none}
+a.backlink:hover{color:var(--accent)}
+
+/* pull statement — Lora italic protagonist */
+.statement{font:400 italic 26px/1.25 var(--font-body);
+  letter-spacing:-.01em;color:var(--ink);margin:26px 0;max-width:24em;text-wrap:pretty}
+
+/* ---- callout: single accent, hairline, no shadow ---- */
+.callout{border:1px solid var(--hairline);border-left:2px solid var(--accent);
+  background:transparent;padding:14px 20px;margin:20px 0}
+.callout .label{font:500 11px/1 var(--font-head);text-transform:uppercase;letter-spacing:.1em;
+  color:var(--accent);display:block;margin-bottom:8px}
+.callout.warn .label::after{content:" — watch out"}
+
+/* ---- chips ---- */
+.chip{display:inline-block;font:500 12px/1 var(--font-head);text-transform:uppercase;letter-spacing:.04em;
+  padding:5px 9px;border:1px solid var(--hairline);color:var(--stone);margin:0 5px 5px 0}
+.chip.on{color:var(--accent);border-color:var(--accent)}
+
+/* ---- tables: hairlines + mono headers, no heavy fills ---- */
+table{border-collapse:collapse;width:100%;margin:20px 0;font-size:15px;border:1px solid var(--hairline)}
+th,td{text-align:left;padding:11px 16px;border-bottom:1px solid var(--hairline)}
+th{font:500 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.05em;color:var(--stone)}
+tr:last-child td{border-bottom:none}
+td .yes{color:var(--accent);font-weight:700} td .no{color:var(--ink);font-weight:700}
+
+/* ---- figure / diagram ---- */
+figure{margin:26px 0;padding:22px;border:1px solid var(--hairline);text-align:center}
+figure svg{max-width:100%;height:auto}
+figcaption{margin-top:12px;font:400 13px/1.4 var(--font-head);color:var(--stone);
+  text-transform:uppercase;letter-spacing:.04em}
+
+/* ---- code / details ---- */
+code{font:14px var(--font-mono);color:var(--accent)}
+pre{border:1px solid var(--hairline);padding:16px;overflow-x:auto;font:13px/1.6 var(--font-mono);color:var(--ink)}
+pre code{color:inherit}
+details{border:1px solid var(--hairline);padding:4px 18px;margin:16px 0}
+summary{cursor:pointer;font:500 14px/1 var(--font-head);text-transform:uppercase;letter-spacing:.05em;
+  color:var(--stone);padding:12px 0}
+summary:hover{color:var(--accent)}
+
+/* ---- signature: monogram (always ink) + spectrum bar ---- */
+.spectrum{display:flex;height:4px;margin:40px 0 22px}
+.spectrum span{flex:1}
+.spectrum .s1{background:var(--orange)} .spectrum .s2{background:var(--blue)} .spectrum .s3{background:var(--green)}
+.signature{display:flex;flex-direction:column;gap:3px;color:var(--stone);
+  border-left:2px solid var(--accent);padding-left:16px}
+.signature .name{font:400 italic 18px/1 var(--font-body);color:var(--ink)}
+.signature .role{font:400 12px/1.3 var(--font-head);text-transform:uppercase;letter-spacing:.06em;color:var(--stone)}
+
+/* ---- phase color-coding: thin left bar, accent cycles ---- */
+.phase{display:flex;align-items:baseline;gap:10px;font:500 16px/1.4 var(--font-head);
+  padding:7px 0 7px 13px;border-left:3px solid var(--stone);margin:6px 0}
+.phase .pn{font:600 10px/1 var(--font-head);letter-spacing:.1em;text-transform:uppercase;color:var(--stone)}
+.phase.p-o{border-color:var(--orange)} .phase.p-b{border-color:var(--blue)} .phase.p-g{border-color:var(--green)}
+
+/* ---- metrics row: large numbers ---- */
+.metrics{display:flex;gap:28px;margin:24px 0;padding:18px 0;border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline)}
+.metrics .metric{flex:0 1 auto}
+.metrics .big{font:700 34px/1 var(--font-head);color:var(--orange)}
+.metrics .label{font:500 11px/1 var(--font-head);letter-spacing:.08em;text-transform:uppercase;color:var(--stone);margin-top:6px}
+
+/* ---- status chips: done / active / todo ---- */
+.schip{display:inline-block;font:600 11px/1 var(--font-head);letter-spacing:.05em;text-transform:uppercase;
+  padding:5px 10px;border-radius:20px;margin:0 5px 5px 0}
+.schip.done{background:var(--green);color:#fff}
+.schip.active{background:var(--orange);color:#fff}
+.schip.todo{background:var(--hairline);color:var(--stone)}
+
+/* ---- progress bar ---- */
+.progress{margin:18px 0}
+.progress .bar{height:8px;border-radius:6px;background:var(--hairline);overflow:hidden}
+.progress .fill{height:100%;background:var(--orange)}
+.progress .label{font:500 12px/1 var(--font-head);color:var(--stone);margin-top:6px}
+
+@media(max-width:880px){
+  body{grid-template-columns:1fr}
+  nav.toc{position:static;height:auto;border-right:none;border-bottom:1px solid var(--hairline)}
+  main{padding:32px 24px 90px}
+}
+</style>
+</head>
+<body>
+<nav class="toc">
+  <div class="eyebrow">[ SPEC ]</div>
+  <div class="doc-title">Keep genuinely open tabs visible past idleTimeout</div>
+  <a href="#problem">Problem</a>
+  <a href="#goal">Goal</a>
+  <a href="#non-goals">Non-goals</a>
+  <a href="#design">Design (Attempted)</a>
+  <a href="#the-insight" class="lvl-3">The insight: search is demand-driven, not size-driven</a>
+  <a href="#pass-1-unchanged" class="lvl-3">Pass 1 (unchanged)</a>
+  <a href="#between-passes" class="lvl-3">Between passes</a>
+  <a href="#pass-2-new-conditional" class="lvl-3">Pass 2 (new, conditional)</a>
+  <a href="#new-primitive" class="lvl-3">New primitive: matchingOpenTabTitle</a>
+  <a href="#final-assembly" class="lvl-3">Final assembly</a>
+  <a href="#testing">Testing (as specified)</a>
+  <a href="#risks">Risks</a>
+  <a href="#amendment">Amendment: Why Pass 2 was reverted</a>
+  <a href="#the-true-identity" class="lvl-3">The true identity (unreachable at runtime)</a>
+  <a href="#what-replaces-it" class="lvl-3">What replaces Pass 2: idleTimeout: 0</a>
+  <a href="#what-was-kept" class="lvl-3">What was kept from Pass 2 work</a>
+</nav>
+<main>
+<div class="eyebrow">
+  <div class="meta">
+    <span>Date: 2026-08-12</span>
+    <span>Status: Superseded</span>
+  </div>
+</div>
+
+<p class="statement">
+This spec documents a two-pass design that was implemented, failed its manual gate repeatedly, and was reverted in favour of <code>idleTimeout: 0</code>. The Problem and Goal remain valid; the Design is kept as a record of what was tried and why it was abandoned.
+</p>
+
+<h2 id="problem">Problem</h2>
+
+<p><code>idleTimeout</code> currently decides "active" purely from a <code>.jsonl</code> file's <code>mtime</code> at the file-listing step — older files are never even read. This was acceptable before open-tab detection landed, but now the extension knows when a tab is genuinely still open via <code>vscode.window.tabGroups</code>, yet lets it vanish from the bar just because the user hasn't sent a new message in a while. A tab you're still looking at disappearing reads as broken.</p>
+
+<h2 id="goal">Goal</h2>
+
+<p>A tab confirmed open via <code>vscode.window.tabGroups</code> must never disappear from the status bar purely from elapsed time. Only <code>idleTimeout</code>-driven disappearance for tabs that are <em>not</em> confirmed open is unaffected.</p>
+
+<h2 id="non-goals">Non-goals</h2>
+
+<ul>
+  <li><strong>Cross-window / <code>onlyCurrentWindow: false</code>.</strong> Same restriction as the closed-tab fix — <code>tabGroups</code> only sees this window's tabs, so resurrection past <code>idleTimeout</code> only applies when <code>onlyCurrentWindow</code> is <code>true</code>.</li>
+  <li><strong>A user-facing setting for the extra-scan bound.</strong> The 20-file-per-project safety cap is an implementation detail, not a behaviour knob — no new <code>claudeContextBar.*</code> setting.</li>
+  <li><strong>Unbounded history scans.</strong> One project directory holds 930 <code>.jsonl</code> files; nothing here may read at a cost that scales with that number in the common case.</li>
+</ul>
+
+<h2 id="design">Design (Attempted)</h2>
+
+<h3 id="the-insight">The insight: search is demand-driven, not size-driven</h3>
+
+<p>An initial approach considered flatly reading "the N most recent files per project regardless of <code>idleTimeout</code>" — but N is either too small (misses a tab idle longer than N other sessions' worth of activity) or too costly at scale. The fix: don't guess a file count — know exactly which open tabs need resolving, and stop reading the moment they're found.</p>
+
+<h3 id="pass-1-unchanged">Pass 1 (unchanged)</h3>
+
+<p>For each project directory, list <code>.jsonl</code> files with <code>mtime > cutoffTime</code> (today's <code>idleTimeout</code> cutoff), read them, and build <code>SessionInfo[]</code>. Every tab still being actively used lands here — this is the common case, and nothing about its cost changes.</p>
+
+<h3 id="between-passes">Between passes</h3>
+
+<p>Only when <code>onlyCurrentWindow</code> is <code>true</code>:</p>
+
+<ol>
+  <li><code>openTabTitles = getOpenClaudeTabTitles()</code> (unchanged).</li>
+  <li><code>reliable = detectionLooksReliable(sessions, openTabTitles)</code> (unchanged).</li>
+  <li>If <code>reliable</code>: find <code>unmatchedTitles</code> — open tab titles that don't correspond to <em>any</em> Pass 1 session. An empty list (the overwhelmingly common case) means Pass 2 never runs at all.</li>
+</ol>
+
+<h3 id="pass-2-new-conditional">Pass 2 (new, conditional)</h3>
+
+<p>Only runs when <code>unmatchedTitles</code> is non-empty. For each project directory, in <code>mtime</code>-descending order, read <code>.jsonl</code> files <em>older</em> than <code>cutoffTime</code> one at a time — stopping as soon as <code>unmatchedTitles</code> is empty, or after 20 files for that project (<code>MAX_EXTRA_SCAN_PER_PROJECT</code>), whichever comes first. A file whose <code>lastPrompt</code> matches one of <code>unmatchedTitles</code> becomes a session, unconditionally kept, and its title is removed from <code>unmatchedTitles</code>.</p>
+
+<h3 id="new-primitive">New primitive: <code>matchingOpenTabTitle</code></h3>
+
+<p>A new function in <code>src/openTabMatch.ts</code> performs the same prefix-match rule as <code>hasMatchingOpenTab</code>, but returns <em>which</em> title matched (or <code>undefined</code>) instead of a boolean. Crucially, it has <strong>no vacuous pass for an empty prompt</strong> — Pass 2 hunts for a positive, named correlation to a specific open tab; an old session with no recorded prompt proves nothing.</p>
+
+<h3 id="final-assembly">Final assembly</h3>
+
+<pre><code>liveSessions = reliable
+    ? pass1Sessions.filter(s =&gt; hasMatchingOpenTab(s.lastPrompt, openTabTitles))
+    : pass1Sessions;
+liveSessions = [...liveSessions, ...pass2Sessions];</code></pre>
+
+<p><code>pass2Sessions</code> need no re-filtering: each one only exists because it already matched a specific unmatched title.</p>
+
+<h2 id="testing">Testing (as specified)</h2>
+
+<p><code>src/openTabMatch.test.ts</code> cases for <code>matchingOpenTabTitle</code>:</p>
+
+<table>
+  <thead>
+    <tr>
+      <th>Case</th>
+      <th>Expected</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Prompt's ellipsis-truncated prefix matches a title in the list</td>
+      <td>Returns that title</td>
+    </tr>
+    <tr>
+      <td>No title matches</td>
+      <td><code>undefined</code></td>
+    </tr>
+    <tr>
+      <td>Empty prompt, non-empty title list</td>
+      <td><code>undefined</code> (no vacuous pass here)</td>
+    </tr>
+    <tr>
+      <td>Two titles, prompt matches the second one</td>
+      <td>Returns the second title, not the first</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><code>hasMatchingOpenTab</code>'s existing 8 cases must still pass unchanged after the refactor (regression check).</p>
+
+<p><strong>Manual gate (required):</strong> in the Extension Development Host, temporarily set <code>claudeContextBar.idleTimeout</code> to something small (e.g. <code>10</code>) in workspace settings, open a tab, send a message, then leave it untouched past 10s. Confirm the item stays visible (Pass 2 resurrecting it). Then close the tab and confirm it still disappears promptly (regression check). Restore <code>idleTimeout</code> afterward.</p>
+
+<h2 id="risks">Risks</h2>
+
+<ul>
+  <li>Pass 2 only runs when there's at least one unmatched open tab — zero extra file reads in the common case. Worst case reads up to 20 extra files per project per refresh cycle, not the full history.</li>
+  <li>A tab idle long enough that more than 20 <em>other</em> sessions in the same project were touched afterward still falls back to disappearing at <code>idleTimeout</code> — same accepted trade-off as the flat-cap design, just at a higher and demand-scoped bound.</li>
+  <li>Still bound by <code>onlyCurrentWindow: true</code> and <code>detectionLooksReliable</code> — unreliable detection skips special handling and falls back to plain <code>idleTimeout</code>.</li>
+</ul>
+
+<h2 id="amendment">Amendment: Why Pass 2 was reverted</h2>
+
+<p>Pass 2 was implemented and failed its manual gate three times, each failure landing in a different place. Under the systematic-debugging rule that 3+ failed fixes indicate a wrong architecture rather than three unlucky bugs, it was reverted.</p>
+
+<div class="callout warn">
+  <strong>Root cause: the matching key is not unique.</strong> Sessions are correlated to tabs by <em>title text</em>, and a tab's title is derived from the session's last prompt. Verified on disk: six sessions, with <code>"teste"</code> appearing as the last prompt of two different session files and <code>"oi"</code> of two others. A non-unique key cannot reliably answer "which session is this tab?", and each fix — a <code>detectionLooksReliable</code> rewrite, a supersession gate, then a bounded older-file scan — moved the failure somewhere else rather than removing it.
+</div>
+
+<h3 id="the-true-identity">The true identity (unreachable at runtime)</h3>
+
+<p>The webview's serialized state carries <code>{"sessionID":"<uuid>"}</code>. This is the unique identifier that would solve the problem — but it is <strong>not reachable at runtime</strong>. <code>vscode.window.tabGroups</code> exposes only <code>viewType</code> and <code>label</code> on <code>TabInputWebview</code>, and the Claude Code extension's <code>sessionPanels</code> map (keyed by session id) is a private field. Verified by reading both the API surface and the extension bundle. Title text is the only runtime signal available, and no amount of extra machinery makes a non-unique key unique.</p>
+
+<h3 id="what-replaces-it">What replaces Pass 2: <code>idleTimeout: 0</code></h3>
+
+<p><code>claudeContextBar.idleTimeout: 0</code> — an already-supported value meaning "never hide by time" — makes <code>cutoffTime</code> zero, so <em>every</em> session file in the project enters the normal Pass 1 scan and the already-verified open-tab filter is the only thing deciding what shows. That achieves this spec's Goal with no new mechanism:</p>
+
+<ul>
+  <li>Tab open → its session is read (no cutoff to fall out of) → matches → shown.</li>
+  <li>Tab closed → dropped by the closed-tab filter, exactly as before.</li>
+</ul>
+
+<p><strong>Cost of <code>idleTimeout: 0</code>:</strong> every session file in the workspace's project directory is parsed on each refresh instead of only recently-modified ones. Acceptable for normal projects; one directory on this machine holds 930 <code>.jsonl</code> files, so if that workspace is opened directly, an mtime-keyed parse cache is the follow-up — deliberately not built yet, since no measurement shows it is needed.</p>
+
+<h3 id="what-was-kept">What was kept from Pass 2 work</h3>
+
+<p>Two pieces of the Pass 2 implementation were retained because they are correct independent of it:</p>
+
+<ul>
+  <li><strong><code>matchingOpenTabTitle</code></strong> (<code>openTabMatch.ts</code>), now backing <code>hasMatchingOpenTab</code>. This primitive is sound and improves the matching logic.</li>
+  <li><strong>The <code>openTabsVerified</code> gate on the supersession heuristic.</strong> Supersession infers "abandoned" from creation-time ordering alone, which is wrong for several genuinely open tabs of one project — an older tab merely gone quiet is indistinguishable from an abandoned one by that rule. When open tabs are positively verified, that guess must not override the verified result. Confirmed live: without this, only the focused tab survived.</li>
+</ul>
+  <div class="spectrum"><span class="s1"></span><span class="s2"></span><span class="s3"></span></div>
+  <div class="signature">
+    <div class="name">rich-doc</div>
+    <div class="role">superpowers companion · Anthropic brand</div>
+  </div>
+</main>
+</body>
+</html>
+<!-- rich-doc-src-sha256:9e3320ac4e4747880d4eb6ede8532ff77bffcb630aad392bc6c7b376c5a68cae -->
