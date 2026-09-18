@@ -8,8 +8,9 @@ import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
 import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
 import { buildItemLabel } from './tabLabel';
-import { hasMatchingOpenTab, detectionLooksReliable } from './openTabMatch';
+import { filterToOpenTabs } from './openTabMatch';
 import { deriveProjectName } from './projectName';
+import { groupAndNumberSessions } from './sessionGroups';
 import { extractUserPromptText } from './userPromptText';
 
 interface SessionInfo {
@@ -42,6 +43,10 @@ interface StatusBarEntry {
 }
 
 const statusBarItems: Map<string, StatusBarEntry> = new Map();
+// Session files whose text matched an open tab on the PREVIOUS refresh. It is
+// what buys a session one refresh of grace when its .jsonl title outruns its
+// tab label — see filterToOpenTabs() in openTabMatch.ts.
+let matchedOpenTabs: ReadonlySet<string> = new Set();
 let fileWatcher: fs.FSWatcher | null = null;
 let refreshInterval: NodeJS.Timeout | null = null;
 
@@ -92,6 +97,15 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
     context.subscriptions.push(focusWatcher);
+
+    // Rescan when a tab opens, closes or retitles itself. The open-tab filter
+    // reads tab labels, and a Claude Code tab retitles itself after the .jsonl
+    // write that triggered the refresh — so without this the bar carried a
+    // stale judgement until the next timer tick.
+    const tabWatcher = vscode.window.tabGroups.onDidChangeTabs(() => {
+        refreshAllSessions();
+    });
+    context.subscriptions.push(tabWatcher);
 
     // Initial scan
     refreshAllSessions();
@@ -446,7 +460,10 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // sidecar-only renamed session beside a normally renamed
                     // one, the second makes detectionLooksReliable() true,
                     // the filter switches on, and the sidecar-only session —
-                    // still open — is dropped from the bar entirely.
+                    // still open — is dropped from the bar. The one refresh of
+                    // grace filterToOpenTabs() now gives it delays that drop;
+                    // it does not prevent it, because the tab never retitles
+                    // to anything the transcript records.
                     //
                     // Not fixed because the state does not occur here: of 187
                     // sessions, 2 carry a sidecar and BOTH also carry the
@@ -664,88 +681,24 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // sessions must be in *this* window's tabGroups, so cross-check against
     // what's genuinely open and drop the rest — instead of waiting out
     // idleTimeout while showing a stale prompt as if it were the current tab.
+    //
+    // Only IDE sessions are judged this way, and a session gets one refresh of
+    // grace — both decided in openTabMatch.ts, which explains why.
     let liveSessions = sessions;
     if (onlyCurrentWindow) {
-        const openTabTitles = getOpenClaudeTabTitles();
-        if (detectionLooksReliable(sessions, openTabTitles)) {
-            liveSessions = sessions.filter((s) => hasMatchingOpenTab(s, openTabTitles));
-        }
+        const { kept, matchedNow } = filterToOpenTabs(
+            sessions,
+            getOpenClaudeTabTitles(),
+            (s) => s.sessionFile,
+            matchedOpenTabs
+        );
+        matchedOpenTabs = matchedNow;
+        liveSessions = kept;
     }
 
-    // Group sessions by base project name
-    const projectGroups = new Map<string, SessionInfo[]>();
-    for (const session of liveSessions) {
-        const base = session.projectName;
-        if (!projectGroups.has(base)) {
-            projectGroups.set(base, []);
-        }
-        projectGroups.get(base)!.push(session);
-    }
-
-    // Process each project group: filter superseded sessions and apply stable numbering
-    const finalSessions: SessionInfo[] = [];
-    for (const [baseName, group] of projectGroups) {
-        // Sort by session CREATION time (newest first) to identify supersession
-        group.sort((a, b) => {
-            const aTime = a.sessionCreated?.getTime() || 0;
-            const bTime = b.sessionCreated?.getTime() || 0;
-            return bTime - aTime;  // Newest first
-        });
-
-        // Filter out superseded sessions
-        // A session is "superseded" if:
-        // 1. A newer session exists that was created AFTER this session's last update
-        //    (meaning the user started a new session after abandoning this one)
-        // 2. OR it has wasCleared=true (ended with /clear, no activity after)
-
-        const activeSessions: SessionInfo[] = [];
-
-        for (let i = 0; i < group.length; i++) {
-            const session = group[i];
-
-            // Check if cleared
-            if (session.wasCleared) {
-                continue; // Skip cleared sessions
-            }
-
-            // Check if superseded by a newer session
-            let isSuperseded = false;
-            for (let j = 0; j < i; j++) {
-                const newerSession = group[j];
-                const newerCreated = newerSession.sessionCreated?.getTime() || 0;
-                const thisLastUpdated = session.lastUpdated.getTime();
-
-                // If a newer session was CREATED after this session's LAST UPDATE,
-                // then this session was abandoned and shouldn't be shown
-                if (newerCreated > thisLastUpdated) {
-                    isSuperseded = true;
-                    break;
-                }
-            }
-
-            if (!isSuperseded) {
-                activeSessions.push(session);
-            }
-        }
-
-        // Re-sort by creation time for stable numbering (oldest first)
-        activeSessions.sort((a, b) => {
-            const aTime = a.sessionCreated?.getTime() || 0;
-            const bTime = b.sessionCreated?.getTime() || 0;
-            return aTime - bTime;
-        });
-
-        // Apply stable numbering
-        for (let i = 0; i < activeSessions.length; i++) {
-            if (i === 0) {
-                activeSessions[i].projectName = baseName;
-            } else {
-                activeSessions[i].projectName = `${baseName}-${i + 1}`;
-            }
-        }
-
-        finalSessions.push(...activeSessions);
-    }
+    // Grouping, supersession and numbering are one pure decision — see
+    // sessionGroups.ts for why the key is the project PATH, not its name.
+    const finalSessions = groupAndNumberSessions(liveSessions);
 
     // Sort by mtime for display order (most recent first)
     finalSessions.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());

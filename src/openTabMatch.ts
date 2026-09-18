@@ -22,9 +22,17 @@
  * Keeping the older texts as extra candidates was tried and reverted: a
  * session whose tab is really closed then survives by colliding with some
  * OTHER open tab titled from its leftover prompt, which is the ghost class
- * this module exists to remove. The cost is one refresh of flicker in the
- * window between a /rename (or the first ai-title) landing in the .jsonl and
- * the webview retitling its tab; detectionLooksReliable() bounds it.
+ * this module exists to remove.
+ *
+ * The cost is a window between a /rename (or the first ai-title) landing in
+ * the .jsonl and the webview retitling its tab, during which a LIVE session
+ * matches nothing. This comment used to claim detectionLooksReliable() bounded
+ * that cost to one refresh. It does not, and both council peers proved it
+ * independently on 2026-09-18 (run 8e85fa04-0392ed52-7b7863d9): that function
+ * turns the filter ON as soon as any OTHER session matches, which is when the
+ * live one gets dropped, and nothing restored it until the next timer tick.
+ * filterToOpenTabs() below is what actually bounds it, together with the
+ * onDidChangeTabs subscription in extension.ts.
  *
  * This is a best-effort heuristic, not an identity check — see
  * detectionLooksReliable() for the safety net that bounds how much a wrong
@@ -35,6 +43,7 @@
  */
 
 import { collapsePrompt } from './tabLabel';
+import { CLAUDE_IDE_ENTRYPOINT } from './revealSession';
 
 /** The texts a Claude Code tab may be titling itself with. */
 export interface TabTitleSource {
@@ -130,4 +139,60 @@ export function detectionLooksReliable(
     }
 
     return withEvidence.some((s) => hasMatchingOpenTab(s, openTabTitles));
+}
+
+/**
+ * Apply the open-tab filter to a whole refresh's worth of sessions.
+ *
+ * Extracted from findActiveSessions() because the composition — not either
+ * function alone — is where the real decision is made, and it was the one part
+ * of the chain with no test. Two peers independently reported the same defect
+ * in it (council run 8e85fa04-0392ed52-7b7863d9, 2026-09-18).
+ *
+ * Only sessions whose entrypoint is the IDE are judged at all. A terminal, SDK
+ * or Desktop session has no editor tab to match, so requiring one evicted it as
+ * soon as some unrelated IDE session made detection look reliable — its context
+ * meter then depended on activity that had nothing to do with it.
+ *
+ * @param sessions        Every session that survived the earlier filters.
+ * @param openTabTitles   Titles of the Claude Code tabs open in this window.
+ * @param keyOf           Stable identity of a session across refreshes.
+ * @param matchedBefore   Keys that matched on the PREVIOUS refresh.
+ */
+export function filterToOpenTabs<T extends TabTitleSource & { entrypoint: string }>(
+    sessions: T[],
+    openTabTitles: string[],
+    keyOf: (session: T) => string,
+    matchedBefore: ReadonlySet<string>
+): { kept: T[]; matchedNow: Set<string> } {
+    const judged = sessions.filter((s) => s.entrypoint === CLAUDE_IDE_ENTRYPOINT);
+    const notJudged = sessions.filter((s) => s.entrypoint !== CLAUDE_IDE_ENTRYPOINT);
+
+    if (!detectionLooksReliable(judged, openTabTitles)) {
+        // Nothing was judged this cycle, so nothing is learned: carry the
+        // previous matches forward rather than making every session look new.
+        return { kept: sessions, matchedNow: new Set(matchedBefore) };
+    }
+
+    const kept: T[] = [...notJudged];
+    const matchedNow = new Set<string>();
+    for (const session of judged) {
+        const key = keyOf(session);
+        if (hasMatchingOpenTab(session, openTabTitles)) {
+            matchedNow.add(key);
+            kept.push(session);
+            continue;
+        }
+        // One refresh of grace, and only for a session that matched on the
+        // previous one. The write that lands a custom-title or a first
+        // ai-title in the .jsonl is itself what triggers this refresh, so the
+        // webview has not necessarily retitled its tab yet; dropping here
+        // hides a session that is open and, with onDidChangeTabs wired, about
+        // to match again. A session that never matched gets no grace, because
+        // that is the closed-tab ghost this module exists to remove.
+        if (matchedBefore.has(key)) {
+            kept.push(session);
+        }
+    }
+    return { kept, matchedNow };
 }

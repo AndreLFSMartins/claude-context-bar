@@ -2,6 +2,42 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.5] - 2026-09-18
+
+### Fixed
+- **A live session no longer disappears from the bar while its tab label catches up.**
+  `hasMatchingOpenTab` compares against the one title the tab shows, so the moment a
+  `/rename` or a first `ai-title` lands in the `.jsonl` the session stops matching — and the
+  `.jsonl` write is itself what triggers the refresh. `detectionLooksReliable` turns the
+  filter ON as soon as any *other* session matches, so the still-open session was dropped.
+  The 1.8.4 comment claiming this cost "one refresh of flicker" was wrong: nothing restored
+  the session until the next timer tick. A session that matched on the previous refresh now
+  gets exactly one refresh of grace, and the extension subscribes to
+  `tabGroups.onDidChangeTabs` so the bar re-evaluates the instant a tab retitles instead of
+  waiting out `refreshInterval`. A session that never matched gets no grace, which is what
+  keeps the closed-tab ghost filter intact.
+- **Terminal, SDK and Claude Desktop sessions are no longer evicted for having no editor
+  tab.** The open-tab cross-check applied to every session regardless of origin, but only a
+  `claude-vscode` session has a tab in `tabGroups` to match. A CLI session survived only
+  until some unrelated IDE session made detection look reliable, and then vanished. Of 363
+  session files written in the week to 2026-09-18, 147 (40%) had a non-IDE entrypoint, and
+  all 363 recorded an entrypoint, so the check now judges IDE sessions only.
+- **Two projects that share a folder name no longer hide each other.** `deriveProjectName`
+  names a project after its own folder, so `/work/team-a/api` and `/work/team-b/api` both
+  read as `api`. That name keyed the supersession groups, so opening a session in one
+  project superseded a still-open session in the other. Grouping is keyed by the project
+  path now; `projectName` stays a display label.
+
+### Changed
+- Grouping, supersession and numbering moved out of `findActiveSessions` into
+  `sessionGroups.ts`, with tests. Being inline and untested is why the grouping-key defect
+  went unnoticed.
+
+All three defects were found by the Dev Council on 1.8.4 (run `8e85fa04-0392ed52-7b7863d9`),
+each reported with a reproduction and each confirmed against the source before the fix. The
+suite goes from 126 to 147 tests; the three new assertions were each shown to fail with
+their fix reverted.
+
 ## [1.8.4] - 2026-09-18
 
 ### Fixed
