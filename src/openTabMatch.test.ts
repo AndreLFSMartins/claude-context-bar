@@ -204,4 +204,24 @@ describe('detectionLooksReliable', () => {
             true
         );
     });
+
+    test('matches a tab titled from the name set with /rename', () => {
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { customTitle: 'Seguros', aiTitle: 'Resume handoff', lastPrompt: 'continue' },
+                ['Seguros']
+            ),
+            true
+        );
+    });
+
+    test('a custom title alone is evidence the detection works', () => {
+        assert.strictEqual(
+            detectionLooksReliable(
+                [{ customTitle: 'Seguros', lastPrompt: '' }],
+                ['Seguros']
+            ),
+            true
+        );
+    });
 });

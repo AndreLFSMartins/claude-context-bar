@@ -20,6 +20,7 @@ interface SessionInfo {
     entrypoint: string;
     lastPrompt: string;
     aiTitle: string;
+    customTitle: string;
     derivedPrompt: string;
     sessionFile: string;
     inputTokens: number;
@@ -221,8 +222,9 @@ interface TokenUsage {
     sessionCreated: Date | null;
     wasCleared: boolean;  // True if session ended with /clear command
     entrypoint: string;   // 'claude-vscode' | 'cli' | 'sdk-cli' | 'claude-desktop' | ''
-    lastPrompt: string;   // Latest user prompt — what the Claude Code tab shows until an AI title exists
+    lastPrompt: string;   // Latest user prompt — what the Claude Code tab shows until a title exists
     aiTitle: string;      // AI-generated session title — what the tab shows once generated ('' before that)
+    customTitle: string;  // Name set with /rename — what the tab shows once set, over the AI title
     derivedPrompt: string; // Latest prompt read from the messages, for sessions that emit neither line
     cwd: string;          // Working directory the session runs in, as recorded on its lines
 }
@@ -343,7 +345,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
         try {
             const stats = fs.statSync(jsonlPath);
             if (stats.size === 0) {
-                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', derivedPrompt: '', cwd: '' });
+                resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', customTitle: '', derivedPrompt: '', cwd: '' });
                 return;
             }
 
@@ -394,6 +396,7 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
             let entrypoint = '';
             let lastPrompt = '';
             let aiTitle = '';
+            let customTitle = '';
             let derivedPrompt = '';
             let cwd = '';
             let finalUsage ={ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0 };
@@ -428,6 +431,18 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // regenerated after a /clear (scan already starts there).
                     if (entry.type === 'ai-title' && typeof entry.aiTitle === 'string') {
                         aiTitle = entry.aiTitle;
+                    }
+
+                    // Name the user set with /rename. It outranks the AI title
+                    // on the tab itself, so it outranks it here too. Latest
+                    // wins: /rename can run again.
+                    // ponytail: only the in-transcript line is read. Claude
+                    // Code also keeps a `<sessionId>/custom-title.json`
+                    // sidecar for sessions whose transcript tail lost the
+                    // line — 2 of 187 on this machine (2026-09-18). Read the
+                    // sidecar too if renamed sessions ever show a stale label.
+                    if (entry.type === 'custom-title' && typeof entry.customTitle === 'string') {
+                        customTitle = entry.customTitle;
                     }
 
                     // Working directory of the session itself. A subagent
@@ -494,12 +509,13 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                 entrypoint,
                 lastPrompt,
                 aiTitle,
+                customTitle,
                 derivedPrompt,
                 cwd
             });
 
         } catch (e) {
-            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', derivedPrompt: '', cwd: '' });
+            resolve({ inputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, totalTokens: 0, model: '', firstMessage: '', sessionCreated: null, wasCleared: false, entrypoint: '', lastPrompt: '', aiTitle: '', customTitle: '', derivedPrompt: '', cwd: '' });
         }
     });
 }
@@ -610,6 +626,7 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                         entrypoint: usage.entrypoint,
                         lastPrompt: usage.lastPrompt,
                         aiTitle: usage.aiTitle,
+                        customTitle: usage.customTitle,
                         derivedPrompt: usage.derivedPrompt,
                         sessionFile: file.path,
                         inputTokens: usage.inputTokens,
@@ -837,6 +854,7 @@ async function refreshAllSessions() {
         // told apart by the text their Claude Code tab is titled with.
         const projectLabel = compactMode ? getShortName(session.projectName, shortNames) : session.projectName;
         const displayName = buildItemLabel({
+            customTitle: session.customTitle,
             aiTitle: session.aiTitle,
             lastPrompt: session.lastPrompt,
             derivedPrompt: session.derivedPrompt,

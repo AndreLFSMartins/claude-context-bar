@@ -2,6 +2,26 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.3] - 2026-09-18
+
+### Fixed
+- **A renamed session now shows the name you gave it.** `/rename` writes
+  `{"type":"custom-title"}` to the session's `.jsonl`, and the Claude Code tab retitles itself from
+  it — verified in the Claude Code extension bundle 2.1.276: the webview renames the tab to the
+  session's `summary`, which resolves as
+  `customTitle || aiTitle || lastPrompt || summaryHint || firstPrompt`. The extension read only the
+  last three, so a renamed session's item carried a stale AI title or prompt while its tab showed
+  the new name. `buildItemLabel` and `hasMatchingOpenTab` now read `custom-title` first, in the
+  tab's own order. Only the in-transcript line is read, not the
+  `<sessionId>/custom-title.json` sidecar Claude Code falls back to (2 of 187 sessions on the
+  development machine).
+
+### Documentation
+- The 1.7.0 entry described the click as delegating to `claude-vscode.editor.open`. It has
+  delegated to `claude-vscode.primaryEditor.open` since 1.7.1, precisely because the other command
+  writes `claudeCode.preferredLocation` into the user's global settings as a side effect. The entry
+  now says so, so the side effect is not reintroduced by a reader following the CHANGELOG.
+
 ## [1.8.2] - 2026-08-15
 
 ### Fixed
@@ -43,8 +63,11 @@ VS Code marketplace auto-update cannot overwrite these changes.
 
 ### Changed
 - **Clicking a status bar item now opens that session's Claude Code tab** instead of hiding the
-  item. It delegates to the Claude Code extension's private `claude-vscode.editor.open` command,
-  which reveals the webview panel matching the session id. Two guards keep it safe: the session's
+  item. It delegates to the Claude Code extension's private
+  `claude-vscode.primaryEditor.open` command, which reveals the webview panel matching the session
+  id. It is deliberately *not* `claude-vscode.editor.open`: that one writes
+  `claudeCode.preferredLocation` into the user's global settings as a side effect. Two guards keep
+  it safe: the session's
   `entrypoint` must be `claude-vscode` (terminal, SDK, and Claude Desktop sessions have no tab, and
   calling the command with an id the extension does not know would create an unwanted tab), and the
   command must actually be registered. Either guard failing shows a message and opens nothing.

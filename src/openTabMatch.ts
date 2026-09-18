@@ -12,10 +12,13 @@
  * vscode.window.tabGroups exposes open tab titles but not session ids — the
  * Claude Code extension's private `sessionPanels` map (keyed by session id) is
  * not public API. So matching is by title text. The Claude Code tab titles
- * itself with the AI-generated session title once one exists (`ai-title` in
- * the .jsonl), and with the latest prompt before that, truncated with a
- * trailing "…" when it doesn't fit — so a session matches when EITHER of its
- * recorded texts corresponds to an open tab's title. This is a best-effort
+ * itself with the name given by /rename once one exists (`custom-title` in
+ * the .jsonl), then with the AI-generated session title (`ai-title`), and
+ * with the latest prompt before either, truncated with a trailing "…" when it
+ * doesn't fit — so a session matches when ANY of its recorded texts
+ * corresponds to an open tab's title. A renamed session keeps its older texts
+ * on disk, and this window may still show a tab titled from one of them, so
+ * all three stay candidates. This is a best-effort
  * heuristic, not an identity check — see detectionLooksReliable() for the
  * safety net that bounds how much a wrong guess here can hide.
  *
@@ -25,8 +28,9 @@
 
 import { collapsePrompt } from './tabLabel';
 
-/** The two texts a Claude Code tab may be titling itself with. */
+/** The texts a Claude Code tab may be titling itself with. */
 export interface TabTitleSource {
+    customTitle?: string;
     aiTitle?: string;
     lastPrompt: string;
 }
@@ -43,15 +47,18 @@ function titleMatchesText(title: string, collapsedText: string): boolean {
 }
 
 /**
- * @param session         The session's AI title and last prompt, as read from
- *                        its .jsonl.
+ * @param session         The session's custom title, AI title and last prompt,
+ *                        as read from its .jsonl.
  * @param openTabTitles   Titles of the Claude Code tabs currently open in
  *                        this window (vscode.window.tabGroups, filtered to
  *                        the claudeVSCodePanel view type).
  */
 export function hasMatchingOpenTab(session: TabTitleSource, openTabTitles: string[]): boolean {
-    const candidates = [collapsePrompt(session.aiTitle ?? ''), collapsePrompt(session.lastPrompt)]
-        .filter((text) => text !== '');
+    const candidates = [
+        collapsePrompt(session.customTitle ?? ''),
+        collapsePrompt(session.aiTitle ?? ''),
+        collapsePrompt(session.lastPrompt),
+    ].filter((text) => text !== '');
 
     // Neither a title nor a prompt recorded yet (a session can be up to one
     // message old before its first lines land) — nothing to correlate, so
@@ -101,7 +108,9 @@ export function detectionLooksReliable(
     }
 
     const withEvidence = sessions.filter(
-        (s) => collapsePrompt(s.aiTitle ?? '') !== '' || collapsePrompt(s.lastPrompt) !== ''
+        (s) => collapsePrompt(s.customTitle ?? '') !== ''
+            || collapsePrompt(s.aiTitle ?? '') !== ''
+            || collapsePrompt(s.lastPrompt) !== ''
     );
     if (withEvidence.length === 0) {
         return true;
