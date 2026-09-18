@@ -438,9 +438,20 @@ async function getLatestTokenCount(jsonlPath: string): Promise<TokenUsage> {
                     // wins: /rename can run again.
                     // ponytail: only the in-transcript line is read. Claude
                     // Code also keeps a `<sessionId>/custom-title.json`
-                    // sidecar for sessions whose transcript tail lost the
-                    // line — 2 of 187 on this machine (2026-09-18). Read the
-                    // sidecar too if renamed sessions ever show a stale label.
+                    // sidecar. Read the sidecar too the moment a session
+                    // turns up with one and no matching transcript line.
+                    //
+                    // The ceiling is worse than a stale label, and was
+                    // reproduced against these modules on 2026-09-18: with a
+                    // sidecar-only renamed session beside a normally renamed
+                    // one, the second makes detectionLooksReliable() true,
+                    // the filter switches on, and the sidecar-only session —
+                    // still open — is dropped from the bar entirely.
+                    //
+                    // Not fixed because the state does not occur here: of 187
+                    // sessions, 2 carry a sidecar and BOTH also carry the
+                    // line, with the same value (checked 2026-09-18). The
+                    // sidecar looks like a mirror, not a fallback.
                     if (entry.type === 'custom-title' && typeof entry.customTitle === 'string') {
                         customTitle = entry.customTitle;
                     }

@@ -225,3 +225,70 @@ describe('detectionLooksReliable', () => {
         );
     });
 });
+
+describe('hasMatchingOpenTab matches the one title the tab is showing', () => {
+    // These two are the cases the first custom-title tests could not tell
+    // apart: both passed whether the three recorded texts were ORed together
+    // or read in the tab's own order. Each one fails if the single-candidate
+    // chain in hasMatchingOpenTab is widened back into a union.
+
+    test('a closed renamed session does not survive on another tab titled from its leftover prompt', () => {
+        // The tab titled "Seguros" is gone. The only open tab happens to be
+        // titled "continue", which is still this session's recorded
+        // lastPrompt. Reading that as "the tab is open" is exactly the ghost
+        // the closed-tab filter exists to remove.
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { customTitle: 'Seguros', aiTitle: 'Resume handoff', lastPrompt: 'continue' },
+                ['continue']
+            ),
+            false
+        );
+    });
+
+    test('a closed renamed session does not survive on its leftover AI title either', () => {
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { customTitle: 'Seguros', aiTitle: 'Resume handoff', lastPrompt: 'continue' },
+                ['Resume handoff']
+            ),
+            false
+        );
+    });
+
+    test('a short custom title does not match a longer, untruncated tab title', () => {
+        // Reproduced against the real modules before the fix: a closed
+        // session named "Auth" was kept alive by an unrelated open tab
+        // titled "Authentication", because the match accepted a title that
+        // merely started with the recorded text.
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { customTitle: 'Auth', aiTitle: 'Design login', lastPrompt: 'build it' },
+                ['Authentication']
+            ),
+            false
+        );
+    });
+
+    test('and that closed session is no longer kept when another session is genuinely open', () => {
+        const closed = { customTitle: 'Auth', aiTitle: 'Design login', lastPrompt: 'build it' };
+        const open = { aiTitle: 'Authentication', lastPrompt: 'test refresh' };
+        const tabs = ['Authentication'];
+
+        assert.strictEqual(detectionLooksReliable([closed, open], tabs), true);
+        assert.strictEqual(hasMatchingOpenTab(open, tabs), true);
+        assert.strictEqual(hasMatchingOpenTab(closed, tabs), false);
+    });
+
+    test('an ellipsis-truncated tab title still matches the custom title it was cut from', () => {
+        // The single-candidate chain must not break truncation: the tab shows
+        // the custom title, cut with VS Code's own trailing ellipsis.
+        assert.strictEqual(
+            hasMatchingOpenTab(
+                { customTitle: 'Revisar o contrato de seguros do cliente', lastPrompt: 'ok' },
+                ['Revisar o contrato de se…']
+            ),
+            true
+        );
+    });
+});

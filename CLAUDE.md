@@ -49,7 +49,7 @@ Fork of [edenaion/claude-context-bar](https://github.com/edenaion/claude-context
 
 There is no API. The extension reads Claude Code's own session files: `~/.claude/projects/<encoded-project-path>/<session-id>.jsonl`, one JSONL line per event. Everything on the bar is derived from those files plus `vscode.window.tabGroups`.
 
-The JSONL fields consumed are **undocumented and reverse-engineered**: `entrypoint`, `cwd`, `{"type":"ai-title"}`, `{"type":"last-prompt"}`, `{"type":"bridge-session"}`, `message.usage.*`, `message.model`, `isMeta`. Parsing is per-line and tolerant — a line that fails to parse is skipped, never fatal. Before changing a reader, check a real `.jsonl` rather than the type definitions.
+The JSONL fields consumed are **undocumented and reverse-engineered**: `entrypoint`, `cwd`, `{"type":"custom-title"}`, `{"type":"ai-title"}`, `{"type":"last-prompt"}`, `{"type":"bridge-session"}`, `message.usage.*`, `message.model`, `isMeta`. Parsing is per-line and tolerant — a line that fails to parse is skipped, never fatal. Before changing a reader, check a real `.jsonl` rather than the type definitions.
 
 The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token from the Keychain and calls the undocumented `api.anthropic.com/api/oauth/usage`. It is opt-in (`showUsage`, default `false`) and degrades to `null` instead of throwing.
 
@@ -75,8 +75,8 @@ The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token fr
 | [contextLimit.ts](src/contextLimit.ts) | model ID → context window (defaults to 1M, 200K is the exception list) |
 | [sessionFilter.ts](src/sessionFilter.ts) | path encoding, workspace scope, scheduled-task detection |
 | [projectName.ts](src/projectName.ts) | real `cwd` → project name, encoded dir as fallback |
-| [tabLabel.ts](src/tabLabel.ts) | AI title / prompt → item label |
-| [openTabMatch.ts](src/openTabMatch.ts) | is this session's tab still open? |
+| [tabLabel.ts](src/tabLabel.ts) | custom title / AI title / prompt → item label |
+| [openTabMatch.ts](src/openTabMatch.ts) | is this session's tab still open? matches the one title the tab shows |
 | [userPromptText.ts](src/userPromptText.ts) | recover the typed prompt from a message (bridged sessions) |
 | [revealSession.ts](src/revealSession.ts) | what a click does, and its two guards |
 

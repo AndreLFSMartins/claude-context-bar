@@ -2,6 +2,33 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.8.4] - 2026-09-18
+
+### Fixed
+- **A closed tab no longer keeps its status bar item alive by colliding with an unrelated
+  open tab.** Two separate holes, both found by the Dev Council on 1.8.3 and both reproduced
+  against the real modules before and after the fix:
+  - `hasMatchingOpenTab` matched a session when *any* of its `custom-title`, `ai-title` or
+    `last-prompt` texts corresponded to an open tab. A tab shows exactly one of those, so a
+    renamed session whose tab was closed survived whenever some other open tab happened to be
+    titled from its leftover prompt. It now matches the one title the tab is showing, using the
+    same `customTitle || aiTitle || lastPrompt` chain as `buildItemLabel`.
+  - `titleMatchesText` accepted a tab title that merely *started with* the recorded text, on top
+    of the correct direction. A closed session named `Auth` matched an open tab titled
+    `Authentication` and stayed on the bar. Harmless while the only texts were long prompts and
+    AI titles; `/rename` made short titles ordinary, so the reverse direction is gone. Ellipsis
+    truncation still matches, as before.
+
+  The cost is one refresh of flicker between a `/rename` landing in the `.jsonl` and the webview
+  retitling its tab. `detectionLooksReliable()` still bounds it.
+
+### Documentation
+- The `custom-title.json` sidecar is still not read, and the comment saying so now names the real
+  ceiling: a sidecar-only renamed session is not merely mislabelled, it is dropped from the bar
+  once another session switches the filter on. Left as is because the state does not occur here —
+  of 187 sessions, 2 carry a sidecar and both also carry the transcript line, with the same value.
+- `CLAUDE.md` lists `{"type":"custom-title"}` among the consumed JSONL fields.
+
 ## [1.8.3] - 2026-09-18
 
 ### Fixed

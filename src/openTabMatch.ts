@@ -15,12 +15,20 @@
  * itself with the name given by /rename once one exists (`custom-title` in
  * the .jsonl), then with the AI-generated session title (`ai-title`), and
  * with the latest prompt before either, truncated with a trailing "…" when it
- * doesn't fit — so a session matches when ANY of its recorded texts
- * corresponds to an open tab's title. A renamed session keeps its older texts
- * on disk, and this window may still show a tab titled from one of them, so
- * all three stay candidates. This is a best-effort
- * heuristic, not an identity check — see detectionLooksReliable() for the
- * safety net that bounds how much a wrong guess here can hide.
+ * doesn't fit.
+ *
+ * A tab shows exactly ONE of those at a time, so this matches exactly one —
+ * the same `customTitle || aiTitle || lastPrompt` chain buildItemLabel uses.
+ * Keeping the older texts as extra candidates was tried and reverted: a
+ * session whose tab is really closed then survives by colliding with some
+ * OTHER open tab titled from its leftover prompt, which is the ghost class
+ * this module exists to remove. The cost is one refresh of flicker in the
+ * window between a /rename (or the first ai-title) landing in the .jsonl and
+ * the webview retitling its tab; detectionLooksReliable() bounds it.
+ *
+ * This is a best-effort heuristic, not an identity check — see
+ * detectionLooksReliable() for the safety net that bounds how much a wrong
+ * guess here can hide.
  *
  * Pure so the behaviour is testable without a VS Code host, following the
  * same pattern as tabLabel.ts and sessionFilter.ts.
@@ -38,12 +46,21 @@ export interface TabTitleSource {
 function titleMatchesText(title: string, collapsedText: string): boolean {
     // Strip a trailing ellipsis left by VS Code's own truncation before
     // comparing — the raw title is a truncation of the text, or, for a
-    // short text, the whole text untruncated.
+    // short text, the whole text untruncated. Either way the title is a
+    // PREFIX of the text, never the other way round.
+    //
+    // The reverse direction (`stripped.startsWith(collapsedText)`) used to be
+    // accepted too, and nothing the comment above claims justifies it. It
+    // made every short recorded text match any longer tab title sharing its
+    // opening characters: a closed session named "Auth" matched an unrelated
+    // open tab titled "Authentication" and stayed on the bar. Harmless while
+    // the only texts were prompts and AI titles, which are long; /rename made
+    // short texts ordinary, so it had to go.
     const stripped = title.replace(/…\s*$/, '').trimEnd();
     if (!stripped) {
         return false;
     }
-    return collapsedText.startsWith(stripped) || stripped.startsWith(collapsedText);
+    return collapsedText.startsWith(stripped);
 }
 
 /**
@@ -54,22 +71,18 @@ function titleMatchesText(title: string, collapsedText: string): boolean {
  *                        the claudeVSCodePanel view type).
  */
 export function hasMatchingOpenTab(session: TabTitleSource, openTabTitles: string[]): boolean {
-    const candidates = [
-        collapsePrompt(session.customTitle ?? ''),
-        collapsePrompt(session.aiTitle ?? ''),
-        collapsePrompt(session.lastPrompt),
-    ].filter((text) => text !== '');
+    const candidate = collapsePrompt(session.customTitle ?? '')
+        || collapsePrompt(session.aiTitle ?? '')
+        || collapsePrompt(session.lastPrompt);
 
     // Neither a title nor a prompt recorded yet (a session can be up to one
     // message old before its first lines land) — nothing to correlate, so
     // this can never be evidence the tab is closed.
-    if (candidates.length === 0) {
+    if (!candidate) {
         return true;
     }
 
-    return openTabTitles.some((title) =>
-        candidates.some((text) => titleMatchesText(title, text))
-    );
+    return openTabTitles.some((title) => titleMatchesText(title, candidate));
 }
 
 /**
