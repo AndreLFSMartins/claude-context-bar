@@ -20,7 +20,7 @@ Fork of [edenaion/claude-context-bar](https://github.com/edenaion/claude-context
 Issues, PRs, comments and releases go to `origin` = `AndreLFSMartins/claude-context-bar`. **Never** to `upstream` = `edenaion/claude-context-bar`, which is a third party's repo; nothing from this fork is offered back.
 
 - `gh` resolves its default repo per clone. In a fork it often picks the upstream, so a bare `gh issue create` or `gh pr create` lands on edenaion. The default was set to the fork on 2026-10-04 (`gh repo set-default AndreLFSMartins/claude-context-bar`); check it with `gh repo set-default --view` before any `gh` write, and pass `--repo AndreLFSMartins/claude-context-bar` anyway.
-- Issues are **disabled** on the fork (GitHub's default for forks, verified 2026-10-04). `gh issue create` fails until they are enabled in the repo settings; the fix is never to file on upstream instead.
+- Issues were enabled on the fork on 2026-10-04 (`gh repo edit --enable-issues`). Before that they were disabled, GitHub's default for forks; the fix was never to file on upstream.
 - `upstream` exists only to read its changes (`git fetch upstream`).
 
 ## Stack
@@ -106,3 +106,17 @@ Clicking an item runs `claude-vscode.primaryEditor.open`, a private command of t
 - New user-facing settings go under `claudeContextBar.*` in `package.json` → `contributes.configuration`, with a `description` that states the default and any opt-in risk.
 - Behavior changes get a `CHANGELOG.md` entry and a `package.json` version bump; the tag is what ships it.
 - Specs and plans live in `docs/superpowers/{specs,plans}/` as `YYYY-MM-DD-<slug>.md` (specs end in `-design.md`). Markdown only: the HTML companions were removed on 2026-09-26 with the retired rich-doc plugin.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on the fork `AndreLFSMartins/claude-context-bar`, via `gh` with an explicit `--repo`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root, created lazily. See `docs/agents/domain.md`.
