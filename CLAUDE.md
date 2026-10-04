@@ -105,7 +105,7 @@ Clicking an item runs `claude-vscode.primaryEditor.open`, a private command of t
 - Each pure module opens with a block comment stating *why* the heuristic exists and what was verified to establish it, with dates. Keep that when editing.
 - New user-facing settings go under `claudeContextBar.*` in `package.json` → `contributes.configuration`, with a `description` that states the default and any opt-in risk.
 - Behavior changes get a `CHANGELOG.md` entry and a `package.json` version bump; the tag is what ships it.
-- Specs and plans live in `docs/superpowers/{specs,plans}/` as `YYYY-MM-DD-<slug>.md` (specs end in `-design.md`). Markdown only: the HTML companions were removed on 2026-09-26 with the retired rich-doc plugin.
+- Specs and plans are GitHub issues on the fork, not files in the repo. See [Issue tracker](#issue-tracker).
 
 ## Agent skills
 
