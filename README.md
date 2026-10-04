@@ -89,8 +89,10 @@ set both secrets first and confirm the `andremartins` publisher exists.
 - Shows only sessions whose working directory is inside this window's workspace folders
   (`onlyCurrentWindow`, default on).
 - Drops a session as soon as its Claude Code tab is closed, instead of waiting out
-  `idleTimeout`. Only IDE sessions are judged this way — a terminal, SDK or Desktop session
-  has no tab to match against, so it is never evicted for lacking one.
+  `idleTimeout`. It reads the Claude Code extension's own tab state for this window and
+  decides by session id; when that state cannot be read it falls back to matching open tab
+  titles. Only IDE sessions are judged this way — a terminal, SDK or Desktop session has no
+  tab, so it is never evicted for lacking one.
 - Labels each item with the session's own text (the name from `/rename`, else the AI title,
   else the last prompt), not the project name.
 - Hides scheduled and background runs (`showScheduledTasks`, default off).

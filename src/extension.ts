@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as readline from 'readline';
+import { execFileSync } from 'child_process';
 import { getContextLimitForModel } from './contextLimit';
 import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
@@ -12,6 +13,7 @@ import { filterToOpenTabs } from './openTabMatch';
 import { deriveProjectName } from './projectName';
 import { groupAndNumberSessions } from './sessionGroups';
 import { extractUserPromptText } from './userPromptText';
+import { parseOpenSessions, keepOpenSessions, OpenSession } from './claudeTabState';
 
 interface SessionInfo {
     projectName: string;
@@ -48,6 +50,16 @@ const statusBarItems: Map<string, StatusBarEntry> = new Map();
 // tab label — see filterToOpenTabs() in openTabMatch.ts.
 let matchedOpenTabs: ReadonlySet<string> = new Set();
 let fileWatcher: fs.FSWatcher | null = null;
+
+// The Claude Code tab state of THIS window (see claudeTabState.ts). The
+// database is re-read only when its mtime moves. A failed stat or sqlite3
+// read is not cached, so the next refresh retries it; content that does not
+// parse is cached like any other read. Each cause of "unknown" is logged once.
+const TAB_STATE_FILE = 'state.vscdb';
+let tabStateDb: string | null = null;
+let tabStateCache: { mtimeMs: number; sessions: OpenSession[] | null } | null = null;
+const loggedTabStateCauses = new Set<string>();
+let tabStateWatcher: fs.FSWatcher | null = null;
 let refreshInterval: NodeJS.Timeout | null = null;
 
 // Subscription usage shown in a single
@@ -107,6 +119,30 @@ export function activate(context: vscode.ExtensionContext) {
     });
     context.subscriptions.push(tabWatcher);
 
+    // VS Code places storageUri at workspaceStorage/<hash>/<extension id>, so
+    // its parent is this window's own <hash> directory. No workspace open →
+    // no storageUri → the tab state is unknown and the title heuristic runs.
+    tabStateDb = context.storageUri
+        ? path.join(path.dirname(context.storageUri.fsPath), TAB_STATE_FILE)
+        : null;
+    console.log(`Claude Context Bar: tab state database ${tabStateDb ?? '(none: no workspace open)'}`);
+
+    // A tab opened or closed rewrites the database about a second later
+    // (measured 2026-10-04), so watching it redraws the bar without waiting
+    // for the timer. The directory is watched, filtered to the one file.
+    if (tabStateDb) {
+        try {
+            tabStateWatcher = fs.watch(path.dirname(tabStateDb), (event, filename) => {
+                // filename can be null on some platforms: refresh rather than miss it.
+                if (!filename || filename === TAB_STATE_FILE) {
+                    refreshAllSessions();
+                }
+            });
+        } catch (e) {
+            console.error('Failed to set up tab state watcher:', e);
+        }
+    }
+
     // Initial scan
     refreshAllSessions();
     refreshUsageData();
@@ -138,6 +174,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (fileWatcher) {
                 fileWatcher.close();
             }
+            tabStateWatcher?.close();
             if (refreshInterval) {
                 clearInterval(refreshInterval);
             }
@@ -156,6 +193,7 @@ export function deactivate() {
     if (fileWatcher) {
         fileWatcher.close();
     }
+    tabStateWatcher?.close();
     if (refreshInterval) {
         clearInterval(refreshInterval);
     }
@@ -571,6 +609,58 @@ function getOpenClaudeTabTitles(): string[] {
     }
 }
 
+function tabStateUnknown(cause: string, error?: unknown): null {
+    if (!loggedTabStateCauses.has(cause)) {
+        loggedTabStateCauses.add(cause);
+        console.warn(`Claude Context Bar: tab state unknown, matching open tabs by title instead: ${cause}`, error ?? '');
+    }
+    return null;
+}
+
+/**
+ * The sessions with a Claude Code tab open in this window, or null when that
+ * cannot be known. Synchronous on purpose: the database changes only when a
+ * tab opens, closes or retitles, so the read is rare, and a synchronous read
+ * cannot let an older refresh render after a newer one.
+ */
+function readOpenSessions(): OpenSession[] | null {
+    if (!tabStateDb) {
+        return tabStateUnknown('no workspace open (context.storageUri is undefined)');
+    }
+    let mtimeMs: number;
+    try {
+        mtimeMs = fs.statSync(tabStateDb).mtimeMs;
+    } catch (e) {
+        return tabStateUnknown(`cannot stat ${tabStateDb}`, e);
+    }
+    if (tabStateCache?.mtimeMs === mtimeMs) {
+        return tabStateCache.sessions;
+    }
+
+    let raw: string;
+    try {
+        raw = execFileSync(
+            '/usr/bin/sqlite3',
+            ['-readonly', tabStateDb, "select value from ItemTable where key='Anthropic.claude-code'"],
+            { timeout: 2000, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] }
+        );
+    } catch (e) {
+        // Missing binary, locked database or timeout: unknown for this refresh only.
+        return tabStateUnknown('sqlite3 read failed', e);
+    }
+
+    // sqlite3 prints nothing when the key is absent.
+    const value = raw.trim() === '' ? undefined : raw;
+    const sessions = parseOpenSessions(value);
+    tabStateCache = { mtimeMs, sessions };
+    if (!sessions) {
+        return tabStateUnknown(value === undefined
+            ? 'key Anthropic.claude-code is missing'
+            : 'Anthropic.claude-code is not JSON or has no panelTabSessions array');
+    }
+    return sessions;
+}
+
 async function findActiveSessions(): Promise<SessionInfo[]> {
     const sessions: SessionInfo[] = [];
     const claudeDir = getClaudeProjectsDir();
@@ -682,10 +772,18 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // what's genuinely open and drop the rest — instead of waiting out
     // idleTimeout while showing a stale prompt as if it were the current tab.
     //
-    // Only IDE sessions are judged this way, and a session gets one refresh of
-    // grace — both decided in openTabMatch.ts, which explains why.
+    // When the Claude Code tab state is readable it decides, by session id
+    // (claudeTabState.ts), and the title heuristic below does not run.
+    // Otherwise only IDE sessions are judged by title, and a session gets one
+    // refresh of grace — both decided in openTabMatch.ts, which explains why.
     let liveSessions = sessions;
-    if (onlyCurrentWindow) {
+    const openSessions = onlyCurrentWindow ? readOpenSessions() : null;
+    if (openSessions) {
+        liveSessions = keepOpenSessions(sessions, openSessions);
+        // Grace is for a match on the PREVIOUS refresh; one from before the
+        // tab state became readable must not carry over if it turns unknown.
+        matchedOpenTabs = new Set();
+    } else if (onlyCurrentWindow) {
         const { kept, matchedNow } = filterToOpenTabs(
             sessions,
             getOpenClaudeTabTitles(),
