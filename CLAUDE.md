@@ -15,6 +15,14 @@ Fork of [edenaion/claude-context-bar](https://github.com/edenaion/claude-context
 - Configurable status bar item cap (`maxItems`, default `12`) instead of a silent hardcoded 5.
 - Clicking an item reveals that session's tab.
 
+## Remotes: everything goes to the fork
+
+Issues, PRs, comments and releases go to `origin` = `AndreLFSMartins/claude-context-bar`. **Never** to `upstream` = `edenaion/claude-context-bar`, which is a third party's repo; nothing from this fork is offered back.
+
+- `gh` resolves its default repo per clone. In a fork it often picks the upstream, so a bare `gh issue create` or `gh pr create` lands on edenaion. The default was set to the fork on 2026-10-04 (`gh repo set-default AndreLFSMartins/claude-context-bar`); check it with `gh repo set-default --view` before any `gh` write, and pass `--repo AndreLFSMartins/claude-context-bar` anyway.
+- Issues are **disabled** on the fork (GitHub's default for forks, verified 2026-10-04). `gh issue create` fails until they are enabled in the repo settings; the fix is never to file on upstream instead.
+- `upstream` exists only to read its changes (`git fetch upstream`).
+
 ## Stack
 
 - **Language:** TypeScript 5 (`strict: true`), target ES2020, `commonjs` modules
@@ -63,9 +71,9 @@ The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token fr
 3. **Idle window** — keep only files whose mtime is inside `idleTimeout`.
 4. **Per-file read** — `getLatestTokenCount()` scans backwards for the last `/clear`, then forwards from there, so a cleared session reports the post-clear state.
 5. **Scheduled-task filter** — `isScheduledTask()` on the first message.
-6. **Open-tab reconciliation** — a closed tab's file keeps a fresh mtime, so `hasMatchingOpenTab()` cross-checks against open tab titles ([src/openTabMatch.ts](src/openTabMatch.ts)). It is a *text* heuristic, because session ids are private to the Claude Code extension; `detectionLooksReliable()` is the safety net that switches the whole step off rather than emptying the bar on a bad match.
-7. **Supersession** — within a project, a session created after another's last update supersedes it.
-8. **Numbering and cap** — positional `-2` suffixes, then `maxItems`, logged to the console rather than dropped silently.
+6. **Open-tab reconciliation** (only when `onlyCurrentWindow`) — a closed tab's file keeps a fresh mtime, so `filterToOpenTabs()` cross-checks against open tab titles ([src/openTabMatch.ts](src/openTabMatch.ts)). It judges IDE sessions only and gives a session one refresh of grace, carried across refreshes in the module-level `matchedOpenTabs`. It is a *text* heuristic, because session ids are private to the Claude Code extension; `detectionLooksReliable()` is the safety net that switches the whole step off rather than emptying the bar on a bad match.
+7. **Grouping, supersession, numbering** — `groupAndNumberSessions()` ([src/sessionGroups.ts](src/sessionGroups.ts)). The group key is the project **path**, never the display name: two folders named `api` are two projects. Within a group, a session created after another's last update supersedes it; survivors get positional `-2` suffixes.
+8. **Cap** — `maxItems`, logged to the console rather than dropped silently.
 
 ### Purity boundary
 
@@ -78,6 +86,7 @@ The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token fr
 | [projectName.ts](src/projectName.ts) | real `cwd` → project name, encoded dir as fallback |
 | [tabLabel.ts](src/tabLabel.ts) | custom title / AI title / prompt → item label |
 | [openTabMatch.ts](src/openTabMatch.ts) | is this session's tab still open? matches the one title the tab shows |
+| [sessionGroups.ts](src/sessionGroups.ts) | group by project path, supersession, `-2` numbering |
 | [userPromptText.ts](src/userPromptText.ts) | recover the typed prompt from a message (bridged sessions) |
 | [revealSession.ts](src/revealSession.ts) | what a click does, and its two guards |
 
@@ -96,4 +105,4 @@ Clicking an item runs `claude-vscode.primaryEditor.open`, a private command of t
 - Each pure module opens with a block comment stating *why* the heuristic exists and what was verified to establish it, with dates. Keep that when editing.
 - New user-facing settings go under `claudeContextBar.*` in `package.json` → `contributes.configuration`, with a `description` that states the default and any opt-in risk.
 - Behavior changes get a `CHANGELOG.md` entry and a `package.json` version bump; the tag is what ships it.
-- Specs and plans live in `docs/superpowers/{specs,plans}/` as `YYYY-MM-DD-<slug>.md`, each with a generated `-design.html` / `.html` companion.
+- Specs and plans live in `docs/superpowers/{specs,plans}/` as `YYYY-MM-DD-<slug>.md` (specs end in `-design.md`). Markdown only: the HTML companions were removed on 2026-09-26 with the retired rich-doc plugin.
