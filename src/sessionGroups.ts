@@ -16,6 +16,13 @@
  * last updated before a newer one in the same project was even created was
  * abandoned rather than left open.
  *
+ * Both are guesses, and an open session (one the window's Claude Code tab
+ * state lists, see claudeTabState.ts) needs neither: its tab is verified open.
+ * So it is never dropped by either rule — an idle tab older than a newer one
+ * in the same project stays, and a tab that just ran /clear shows its new
+ * session at 0%. It still counts as "newer" against sessions not known to be
+ * open, and still gets numbered with its group.
+ *
  * Pure so the behaviour is testable without a VS Code host, following the same
  * pattern as tabLabel.ts and sessionFilter.ts.
  */
@@ -29,6 +36,8 @@ export interface GroupableSession {
     sessionCreated: Date | null;
     lastUpdated: Date;
     wasCleared: boolean;
+    /** Listed in the window's tab state: exempt from both drop rules. */
+    open?: boolean;
 }
 
 export function groupAndNumberSessions<T extends GroupableSession>(sessions: T[]): T[] {
@@ -55,6 +64,10 @@ export function groupAndNumberSessions<T extends GroupableSession>(sessions: T[]
         const active: T[] = [];
         for (let i = 0; i < byCreation.length; i++) {
             const session = byCreation[i];
+            if (session.open) {
+                active.push(session);
+                continue;
+            }
             if (session.wasCleared) {
                 continue;
             }

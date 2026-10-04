@@ -14,6 +14,7 @@ import { deriveProjectName } from './projectName';
 import { groupAndNumberSessions } from './sessionGroups';
 import { extractUserPromptText } from './userPromptText';
 import { parseOpenSessions, keepOpenSessions, OpenSession } from './claudeTabState';
+import { resolveOpenSessionFiles, entrypointFromHead, skipInScan, HEAD_BYTES } from './openSessionFiles';
 
 interface SessionInfo {
     projectName: string;
@@ -37,6 +38,8 @@ interface SessionInfo {
     firstMessage: string;
     sessionCreated: Date | null;
     wasCleared: boolean;
+    /** Listed in this window's tab state (see sessionGroups.ts). */
+    open: boolean;
 }
 
 interface StatusBarEntry {
@@ -60,6 +63,8 @@ let tabStateDb: string | null = null;
 let tabStateCache: { mtimeMs: number; sessions: OpenSession[] | null } | null = null;
 const loggedTabStateCauses = new Set<string>();
 let tabStateWatcher: fs.FSWatcher | null = null;
+// Open session id → its .jsonl, from the previous refresh (openSessionFiles.ts).
+let openSessionFileCache: Map<string, string> = new Map();
 let refreshInterval: NodeJS.Timeout | null = null;
 
 // Subscription usage shown in a single
@@ -661,6 +666,65 @@ function readOpenSessions(): OpenSession[] | null {
     return sessions;
 }
 
+/** The entrypoint the head of a session file records, or "" (openSessionFiles.ts). */
+function readHeadEntrypoint(file: string): string {
+    let fd: number | undefined;
+    try {
+        fd = fs.openSync(file, 'r');
+        const head = Buffer.alloc(HEAD_BYTES);
+        const bytes = fs.readSync(fd, head, 0, HEAD_BYTES, 0);
+        return entrypointFromHead(head.toString('utf-8', 0, bytes));
+    } catch {
+        return '';
+    } finally {
+        if (fd !== undefined) {
+            fs.closeSync(fd);
+        }
+    }
+}
+
+function toSessionInfo(
+    file: string,
+    mtime: Date,
+    usage: TokenUsage,
+    open: boolean,
+    contextLimit: number,
+    modelContextLimits: Record<string, number>
+): SessionInfo {
+    // The encoded directory name cannot say which dashes are path separators,
+    // so the cwd the session recorded names the project when it is available.
+    const { name, fullPath } = decodeProjectPath(path.basename(path.dirname(file)));
+    // Short session ID for display only — the Claude Code command needs the
+    // full id, kept separately.
+    const fullSessionId = path.basename(file, '.jsonl');
+    // Auto-detect context limit based on model
+    const sessionContextLimit = getContextLimitForModel(usage.model, contextLimit, modelContextLimits);
+    return {
+        projectName: deriveProjectName(usage.cwd, name),
+        projectPath: usage.cwd || fullPath,
+        sessionId: fullSessionId.substring(0, 8),
+        fullSessionId,
+        entrypoint: usage.entrypoint,
+        lastPrompt: usage.lastPrompt,
+        aiTitle: usage.aiTitle,
+        customTitle: usage.customTitle,
+        derivedPrompt: usage.derivedPrompt,
+        sessionFile: file,
+        inputTokens: usage.inputTokens,
+        cacheReadTokens: usage.cacheReadTokens,
+        cacheCreationTokens: usage.cacheCreationTokens,
+        totalTokens: usage.totalTokens,
+        percentage: Math.round((usage.totalTokens / sessionContextLimit) * 100),
+        lastUpdated: mtime,
+        model: usage.model,
+        contextLimit: sessionContextLimit,
+        firstMessage: usage.firstMessage,
+        sessionCreated: usage.sessionCreated,
+        wasCleared: usage.wasCleared,
+        open
+    };
+}
+
 async function findActiveSessions(): Promise<SessionInfo[]> {
     const sessions: SessionInfo[] = [];
     const claudeDir = getClaudeProjectsDir();
@@ -685,6 +749,11 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // Only look at sessions modified within the idle timeout (active sessions)
     // idleTimeout of 0 (or negative) disables the timeout: sessions never go stale
     const cutoffTime = idleTimeout > 0 ? Date.now() - (idleTimeout * 1000) : 0;
+
+    // Read before the scan: when it is known, open sessions are read by id
+    // below, and the scan leaves every IDE session to that path.
+    const openSessions = onlyCurrentWindow ? readOpenSessions() : null;
+    const openIds = openSessions ? new Set(openSessions.map(s => s.sessionId)) : null;
 
     try {
         const projectDirs = fs.readdirSync(claudeDir);
@@ -718,6 +787,11 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
 
             // Get token count from EACH active session file (1 per Claude Code tab)
             for (const file of files) {
+                // With the tab state known, an open session is read by id
+                // below and a closed IDE session is dropped anyway, so neither
+                // is parsed here (openSessionFiles.ts).
+                if (skipInScan(path.basename(file.name, '.jsonl'), openIds, () => readHeadEntrypoint(file.path))) continue;
+
                 const usage = await getLatestTokenCount(file.path);
 
                 if (usage.totalTokens > 0) {
@@ -725,45 +799,40 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                     // otherwise compete with real tabs for status bar slots.
                     if (!showScheduledTasks && isScheduledTask(usage.firstMessage)) continue;
 
-                    // The encoded directory name cannot say which dashes are
-                    // path separators, so the cwd the session recorded names
-                    // the project when it is available.
-                    const { name, fullPath } = decodeProjectPath(projectDir);
-                    const projectName = deriveProjectName(usage.cwd, name);
-                    // Extract short session ID from filename (display only — the
-                    // Claude Code command needs the full id, kept separately)
-                    const fullSessionId = file.name.replace('.jsonl', '');
-                    const sessionId = fullSessionId.substring(0, 8);
-                    // Auto-detect context limit based on model
-                    const sessionContextLimit = getContextLimitForModel(usage.model, contextLimit, modelContextLimits);
-                    sessions.push({
-                        projectName,
-                        projectPath: usage.cwd || fullPath,
-                        sessionId,
-                        fullSessionId,
-                        entrypoint: usage.entrypoint,
-                        lastPrompt: usage.lastPrompt,
-                        aiTitle: usage.aiTitle,
-                        customTitle: usage.customTitle,
-                        derivedPrompt: usage.derivedPrompt,
-                        sessionFile: file.path,
-                        inputTokens: usage.inputTokens,
-                        cacheReadTokens: usage.cacheReadTokens,
-                        cacheCreationTokens: usage.cacheCreationTokens,
-                        totalTokens: usage.totalTokens,
-                        percentage: Math.round((usage.totalTokens / sessionContextLimit) * 100),
-                        lastUpdated: file.mtime,
-                        model: usage.model,
-                        contextLimit: sessionContextLimit,
-                        firstMessage: usage.firstMessage,
-                        sessionCreated: usage.sessionCreated,
-                        wasCleared: usage.wasCleared
-                    });
+                    sessions.push(toSessionInfo(file.path, file.mtime, usage, false, contextLimit, modelContextLimits));
                 }
             }
         }
     } catch (e) {
         console.error('Error scanning Claude projects:', e);
+    }
+
+    // Each open session is shown however long it sat idle, wherever its file
+    // lives, at 0% if it has no usage yet and even right after a /clear: the
+    // tab state proves it is open, so none of the scan's guesses apply.
+    if (openSessions) {
+        try {
+            openSessionFileCache = resolveOpenSessionFiles(
+                openSessions.map(s => s.sessionId),
+                openSessionFileCache,
+                () => fs.readdirSync(claudeDir).map(d => path.join(claudeDir, d)),
+                fs.existsSync
+            );
+        } catch (e) {
+            console.error('Error resolving open Claude Code sessions:', e);
+            // The previous map may hold ids closed since: never reuse it.
+            openSessionFileCache = new Map();
+        }
+        for (const file of openSessionFileCache.values()) {
+            let mtime: Date;
+            try {
+                mtime = fs.statSync(file).mtime;
+            } catch {
+                continue; // deleted since it was resolved
+            }
+            const usage = await getLatestTokenCount(file);
+            sessions.push(toSessionInfo(file, mtime, usage, true, contextLimit, modelContextLimits));
+        }
     }
 
     // A session file can stay within idleTimeout after its actual Claude Code
@@ -777,7 +846,6 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // Otherwise only IDE sessions are judged by title, and a session gets one
     // refresh of grace — both decided in openTabMatch.ts, which explains why.
     let liveSessions = sessions;
-    const openSessions = onlyCurrentWindow ? readOpenSessions() : null;
     if (openSessions) {
         liveSessions = keepOpenSessions(sessions, openSessions);
         // Grace is for a match on the PREVIOUS refresh; one from before the

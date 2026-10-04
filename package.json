@@ -2,7 +2,7 @@
     "name": "claude-context-bar-fork",
     "displayName": "Claude Context Bar (fork)",
     "description": "Real-time context window usage monitor for Claude Code sessions. Fork: shows only the current window's sessions, hides scheduled tasks, and no longer truncates the list to 5 items silently.",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "publisher": "andremartins",
     "author": {
         "name": "Ed Zisk",
@@ -126,7 +126,7 @@
                     "default": 180,
                     "minimum": 0,
                     "maximum": 9999999,
-                    "description": "Seconds of inactivity before hiding a session (default: 180 / 3 minutes). Set 0 to never hide idle sessions."
+                    "description": "Seconds of inactivity before hiding a session (default: 180 / 3 minutes). Set 0 to never hide idle sessions. Whenever this window's Claude Code tab state is readable, it applies only to sessions outside VS Code tabs (terminal, SDK, Desktop): a session with an open tab stays however long it sits idle."
                 },
                 "claudeContextBar.onlyCurrentWindow": {
                     "type": "boolean",

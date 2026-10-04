@@ -93,6 +93,10 @@ set both secrets first and confirm the `andremartins` publisher exists.
   decides by session id; when that state cannot be read it falls back to matching open tab
   titles. Only IDE sessions are judged this way — a terminal, SDK or Desktop session has no
   tab, so it is never evicted for lacking one.
+- Keeps a session on the bar for as long as its Claude Code tab is open, however long it sits
+  idle, wherever its session file lives, and at 0% before its first reply or right after a
+  `/clear`. This needs the tab state; `idleTimeout` then applies only to sessions outside VS
+  Code tabs.
 - Labels each item with the session's own text (the name from `/rename`, else the AI title,
   else the last prompt), not the project name.
 - Hides scheduled and background runs (`showScheduledTasks`, default off).
@@ -116,7 +120,7 @@ set both secrets first and confirm the `andremartins` publisher exists.
 | `claudeContextBar.usageDangerThreshold` | `75` | Usage percentage for red danger (independent of context) |
 | `claudeContextBar.usageRefreshInterval` | `60` | How often (seconds) to refresh subscription usage from the `/usage` endpoint |
 | `claudeContextBar.refreshInterval` | `30` | Refresh interval in seconds |
-| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before a session drops off the bar (3 minutes). Set `0` to keep idle sessions forever |
+| `claudeContextBar.idleTimeout` | `180` | Seconds of inactivity before a session drops off the bar (3 minutes). Set `0` to keep idle sessions forever. When this window's Claude Code tab state is readable, it applies only to sessions outside VS Code tabs: an open tab stays however long it sits idle |
 | `claudeContextBar.onlyCurrentWindow` | `true` | Show only sessions whose working directory is inside this window's workspace folders. Turning it off also turns off the closed-tab check, since that only makes sense within one window |
 | `claudeContextBar.showScheduledTasks` | `false` | Show scheduled and background runs. They are sessions but not tabs, so by default they don't compete for status bar slots |
 | `claudeContextBar.maxItems` | `12` | Maximum status bar items. Anything dropped by the cap is logged to the console rather than vanishing silently. `0` disables the cap |
@@ -135,7 +139,7 @@ The extension reads Claude Code's session files from `~/.claude/projects/` and c
 
 Claude session files record only the Model ID, with no context-window field, so the limit is inferred from the ID. The default is 1M because current frontier models all ship with a 1M window, which means new models resolve correctly with no update needed. Haiku and legacy models are the 200K exceptions. If any model is ever mis-sized (for example, your plan caps a model lower than its API window), pin an exact value in `modelContextLimits` and it always wins.
 
-Sessions inactive for more than 3 minutes (configurable via `idleTimeout`, `0` disables hiding) are automatically hidden, and reappear as soon as a resumed session writes new activity. The window regaining focus also triggers an immediate rescan. The extension also detects when sessions have been superseded by newer ones (e.g., after running `/clear` and opening a new tab), hiding ghost sessions immediately.
+Sessions inactive for more than 3 minutes (configurable via `idleTimeout`, `0` disables hiding) are automatically hidden — except a session whose Claude Code tab is open in this window, which stays until the tab closes — and reappear as soon as a resumed session writes new activity. The window regaining focus also triggers an immediate rescan. The extension also detects when sessions have been superseded by newer ones (e.g., after running `/clear` and opening a new tab), hiding ghost sessions immediately.
 
 ### Subscription usage
 
