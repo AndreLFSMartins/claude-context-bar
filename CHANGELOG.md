@@ -2,6 +2,22 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.9.0] - 2026-10-04
+
+### Changed
+- **A closed Claude Code tab leaves the bar by its session id, not its title.** The bar now
+  reads this window's own Claude Code tab state (`panelTabSessions` under the
+  `Anthropic.claude-code` key of the `state.vscdb` next to the extension's workspace
+  storage) and drops every IDE session not listed there. Two tabs with the same title are
+  no longer confused: closing one removes only that one. The database is read with
+  `/usr/bin/sqlite3 -readonly` (2 s timeout) only when its mtime changes, and a change to it
+  triggers a refresh, so a closed tab leaves the bar about a second later instead of on the
+  next timer tick.
+- When the tab state cannot be read (no workspace, no `sqlite3`, locked or timed-out read,
+  missing key, unexpected format), the bar falls back to the 1.8.5 title matching unchanged
+  and logs the cause once. Terminal, SDK and Desktop sessions are unaffected, and
+  `idleTimeout` still applies to every session.
+
 ## [1.8.5] - 2026-09-18
 
 ### Fixed

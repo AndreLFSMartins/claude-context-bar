@@ -29,7 +29,7 @@ Issues, PRs, comments and releases go to `origin` = `AndreLFSMartins/claude-cont
 - **Runtime:** Node.js (VS Code extension host, engine `^1.74.0`)
 - **Build:** `tsc` — `src/` → `out/`, entry point `out/extension.js`
 - **Tests:** `node --test` (Node built-in test runner) over compiled `out/*.test.js`
-- **Dependencies:** none at runtime; devDeps are `typescript`, `@types/node`, `@types/vscode`
+- **Dependencies:** none at runtime besides the system `/usr/bin/sqlite3` binary (optional; without it the tab state is unknown); devDeps are `typescript`, `@types/node`, `@types/vscode`
 
 ## Commands
 
@@ -56,7 +56,9 @@ Issues, PRs, comments and releases go to `origin` = `AndreLFSMartins/claude-cont
 
 ### Data source
 
-There is no API. The extension reads Claude Code's own session files: `~/.claude/projects/<encoded-project-path>/<session-id>.jsonl`, one JSONL line per event. Everything on the bar is derived from those files plus `vscode.window.tabGroups`.
+There is no API. The extension reads Claude Code's own session files: `~/.claude/projects/<encoded-project-path>/<session-id>.jsonl`, one JSONL line per event. Everything on the bar is derived from those files, the Claude Code extension's tab state, and `vscode.window.tabGroups`.
+
+The tab state is the `Anthropic.claude-code` key of `ItemTable` in this window's `workspaceStorage/<hash>/state.vscdb` (the parent of `context.storageUri`). It is read with `/usr/bin/sqlite3 -readonly` (macOS only, 2 s timeout), and only its `panelTabSessions` array is used ([src/claudeTabState.ts](src/claudeTabState.ts)). It is private state of that extension: any failure yields `null` and the title heuristic takes over.
 
 The JSONL fields consumed are **undocumented and reverse-engineered**: `entrypoint`, `cwd`, `{"type":"custom-title"}`, `{"type":"ai-title"}`, `{"type":"last-prompt"}`, `{"type":"bridge-session"}`, `message.usage.*`, `message.model`, `isMeta`. Parsing is per-line and tolerant — a line that fails to parse is skipped, never fatal. Before changing a reader, check a real `.jsonl` rather than the type definitions.
 
@@ -71,7 +73,7 @@ The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token fr
 3. **Idle window** — keep only files whose mtime is inside `idleTimeout`.
 4. **Per-file read** — `getLatestTokenCount()` scans backwards for the last `/clear`, then forwards from there, so a cleared session reports the post-clear state.
 5. **Scheduled-task filter** — `isScheduledTask()` on the first message.
-6. **Open-tab reconciliation** (only when `onlyCurrentWindow`) — a closed tab's file keeps a fresh mtime, so `filterToOpenTabs()` cross-checks against open tab titles ([src/openTabMatch.ts](src/openTabMatch.ts)). It judges IDE sessions only and gives a session one refresh of grace, carried across refreshes in the module-level `matchedOpenTabs`. It is a *text* heuristic, because session ids are private to the Claude Code extension; `detectionLooksReliable()` is the safety net that switches the whole step off rather than emptying the bar on a bad match.
+6. **Open-tab reconciliation** (only when `onlyCurrentWindow`) — a closed tab's file keeps a fresh mtime. When this window's Claude Code tab state is readable (`state.vscdb` beside `context.storageUri`, read only when its mtime changes, and watched as a refresh trigger), `keepOpenSessions()` drops every IDE session whose id is not in it ([src/claudeTabState.ts](src/claudeTabState.ts)) and the title heuristic does not run. Otherwise (`null`, cause logged once), `filterToOpenTabs()` cross-checks against open tab titles ([src/openTabMatch.ts](src/openTabMatch.ts)). It judges IDE sessions only and gives a session one refresh of grace, carried across refreshes in the module-level `matchedOpenTabs`. It is a *text* heuristic, because session ids are private to the Claude Code extension; `detectionLooksReliable()` is the safety net that switches the whole step off rather than emptying the bar on a bad match.
 7. **Grouping, supersession, numbering** — `groupAndNumberSessions()` ([src/sessionGroups.ts](src/sessionGroups.ts)). The group key is the project **path**, never the display name: two folders named `api` are two projects. Within a group, a session created after another's last update supersedes it; survivors get positional `-2` suffixes.
 8. **Cap** — `maxItems`, logged to the console rather than dropped silently.
 
@@ -85,7 +87,8 @@ The same applies to [src/usage.ts](src/usage.ts), which reads the OAuth token fr
 | [sessionFilter.ts](src/sessionFilter.ts) | path encoding, workspace scope, scheduled-task detection |
 | [projectName.ts](src/projectName.ts) | real `cwd` → project name, encoded dir as fallback |
 | [tabLabel.ts](src/tabLabel.ts) | custom title / AI title / prompt → item label |
-| [openTabMatch.ts](src/openTabMatch.ts) | is this session's tab still open? matches the one title the tab shows |
+| [claudeTabState.ts](src/claudeTabState.ts) | Claude Code tab state → open session ids; drops IDE sessions not in it |
+| [openTabMatch.ts](src/openTabMatch.ts) | is this session's tab still open? matches the one title the tab shows (fallback when the tab state is unknown) |
 | [sessionGroups.ts](src/sessionGroups.ts) | group by project path, supersession, `-2` numbering |
 | [userPromptText.ts](src/userPromptText.ts) | recover the typed prompt from a message (bridged sessions) |
 | [revealSession.ts](src/revealSession.ts) | what a click does, and its two guards |
