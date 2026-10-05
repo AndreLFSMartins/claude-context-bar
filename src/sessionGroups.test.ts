@@ -9,6 +9,7 @@ interface Fixture {
     sessionCreated: Date | null;
     lastUpdated: Date;
     wasCleared: boolean;
+    open?: boolean;
 }
 
 function session(id: string, opts: Partial<Fixture> = {}): Fixture {
@@ -101,6 +102,31 @@ describe('groupAndNumberSessions', () => {
         const undated = session('undated', { sessionCreated: null });
 
         assert.deepEqual(ids(groupAndNumberSessions([undated])), ['undated']);
+    });
+
+    test('an open session is never superseded, whatever the creation order', () => {
+        // The tab state proves both tabs are open, so supersession's
+        // "abandoned" guess does not apply to either.
+        const idle = session('idle', { sessionCreated: new Date(1000), lastUpdated: new Date(2000), open: true });
+        const newer = session('newer', { sessionCreated: new Date(3000), lastUpdated: new Date(4000), open: true });
+
+        const result = groupAndNumberSessions([newer, idle]);
+
+        assert.strictEqual(result.find((s) => s.id === 'idle')!.projectName, 'api');
+        assert.strictEqual(result.find((s) => s.id === 'newer')!.projectName, 'api-2');
+    });
+
+    test('an open session that just ran /clear is kept, not dropped as cleared', () => {
+        const cleared = session('cleared', { wasCleared: true, open: true });
+
+        assert.deepEqual(ids(groupAndNumberSessions([cleared])), ['cleared']);
+    });
+
+    test('a session not known to be open is still superseded by an open one', () => {
+        const abandoned = session('abandoned', { sessionCreated: new Date(1000), lastUpdated: new Date(2000) });
+        const open = session('open', { sessionCreated: new Date(3000), lastUpdated: new Date(4000), open: true });
+
+        assert.deepEqual(ids(groupAndNumberSessions([abandoned, open])), ['open']);
     });
 
     test('an empty input returns an empty list', () => {

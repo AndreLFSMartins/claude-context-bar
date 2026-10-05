@@ -2,6 +2,25 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.10.0] - 2026-10-04
+
+### Fixed
+- **An open Claude Code tab stays on the bar however long it sits idle.** With the default
+  `idleTimeout` of 180 s, a tab left idle for three minutes dropped off the bar while still
+  open, because the `idleTimeout` cut ran before the open-tab check ever saw the session.
+  Whenever this window's tab state is readable, each open session's `.jsonl` is now found by
+  its id across every directory under `~/.claude/projects` (the id → path answer is cached)
+  and shown with no `idleTimeout` cut, no workspace-scope filter, at 0% when it has no usage
+  yet, and not dropped as `/clear`ed or superseded: the tab state proves it is open, so those
+  guesses do not apply. Two open tabs in one project both show and keep their `-2` numbering.
+- Only the open sessions' files are parsed for IDE sessions: the directory scan reads the
+  first 64 KB of each file in the idle window and skips any whose entrypoint is
+  `claude-vscode`, instead of parsing a closed tab's whole file only to drop it.
+- An open session is shown even when it is a scheduled run (`showScheduledTasks` off): that
+  filter exists because such runs are not tabs, and an open one is.
+- Terminal, SDK and Desktop sessions keep the `idleTimeout` rule. With the tab state unknown,
+  or `onlyCurrentWindow` off, the pipeline is 1.9.0's unchanged.
+
 ## [1.9.0] - 2026-10-04
 
 ### Changed
