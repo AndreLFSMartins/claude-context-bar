@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import * as path from 'path';
-import { resolveOpenSessionFiles, entrypointFromHead, skipInScan } from './openSessionFiles';
+import { resolveOpenSessionFiles, openSessionsWithoutFile, entrypointFromHead, skipInScan } from './openSessionFiles';
 import { CLAUDE_IDE_ENTRYPOINT } from './revealSession';
 
 const DIRS = ['/p/-Users-a-vault', '/p/-Users-a-elsewhere'];
@@ -70,6 +70,29 @@ describe('resolveOpenSessionFiles', () => {
         resolveOpenSessionFiles(['aaa', 'bbb', 'ccc'], new Map(), fs.listDirs, fs.exists);
 
         assert.strictEqual(fs.listedCount(), 1);
+    });
+});
+
+describe('openSessionsWithoutFile', () => {
+    test('returns the open sessions with no file yet, with their tab titles, in tab-state order', () => {
+        const open = [
+            { sessionId: 'ccc', title: 'Claude Code' },
+            { sessionId: 'aaa', title: 'Fix the bar' },
+            { sessionId: 'bbb', title: '' }
+        ];
+
+        const unstarted = openSessionsWithoutFile(open, new Map([['aaa', '/p/-Users-a-vault/aaa.jsonl']]));
+
+        assert.deepStrictEqual(unstarted, [
+            { sessionId: 'ccc', title: 'Claude Code' },
+            { sessionId: 'bbb', title: '' }
+        ]);
+    });
+
+    test('returns none once every open session has a file', () => {
+        const open = [{ sessionId: 'aaa', title: 'Fix the bar' }];
+
+        assert.deepStrictEqual(openSessionsWithoutFile(open, new Map([['aaa', '/p/x/aaa.jsonl']])), []);
     });
 });
 

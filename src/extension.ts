@@ -7,14 +7,14 @@ import { execFileSync } from 'child_process';
 import { getContextLimitForModel } from './contextLimit';
 import { getUsage, UsageData, UsageMeter } from './usage';
 import { encodeProjectPath, belongsToWorkspace, isScheduledTask } from './sessionFilter';
-import { resolveClickAction, CLAUDE_REVEAL_COMMAND } from './revealSession';
+import { resolveClickAction, CLAUDE_REVEAL_COMMAND, CLAUDE_IDE_ENTRYPOINT } from './revealSession';
 import { buildItemLabel } from './tabLabel';
 import { filterToOpenTabs } from './openTabMatch';
 import { deriveProjectName } from './projectName';
 import { groupAndNumberSessions } from './sessionGroups';
 import { extractUserPromptText } from './userPromptText';
 import { parseOpenSessions, keepOpenSessions, OpenSession } from './claudeTabState';
-import { resolveOpenSessionFiles, entrypointFromHead, skipInScan, HEAD_BYTES } from './openSessionFiles';
+import { resolveOpenSessionFiles, openSessionsWithoutFile, entrypointFromHead, skipInScan, HEAD_BYTES } from './openSessionFiles';
 
 interface SessionInfo {
     projectName: string;
@@ -26,6 +26,7 @@ interface SessionInfo {
     aiTitle: string;
     customTitle: string;
     derivedPrompt: string;
+    /** '' for an open session with no file yet: a tab opened and never used. */
     sessionFile: string;
     inputTokens: number;
     cacheReadTokens: number;
@@ -42,12 +43,9 @@ interface SessionInfo {
     open: boolean;
 }
 
-interface StatusBarEntry {
-    item: vscode.StatusBarItem;
-    sessionFile: string;
-}
-
-const statusBarItems: Map<string, StatusBarEntry> = new Map();
+// Keyed by the full session id, not the file path: a never-used tab has no
+// file yet, and its item must update in place when the first message writes one.
+const statusBarItems: Map<string, vscode.StatusBarItem> = new Map();
 // Session files whose text matched an open tab on the PREVIOUS refresh. It is
 // what buys a session one refresh of grace when its .jsonl title outruns its
 // tab label — see filterToOpenTabs() in openTabMatch.ts.
@@ -186,7 +184,7 @@ export function activate(context: vscode.ExtensionContext) {
             if (usageInterval) {
                 clearInterval(usageInterval);
             }
-            statusBarItems.forEach(entry => entry.item.dispose());
+            statusBarItems.forEach(item => item.dispose());
             statusBarItems.clear();
             usageItem?.dispose();
             usageItem = null;
@@ -205,7 +203,7 @@ export function deactivate() {
     if (usageInterval) {
         clearInterval(usageInterval);
     }
-    statusBarItems.forEach(entry => entry.item.dispose());
+    statusBarItems.forEach(item => item.dispose());
     statusBarItems.clear();
     usageItem?.dispose();
     usageItem = null;
@@ -725,6 +723,39 @@ function toSessionInfo(
     };
 }
 
+/**
+ * An open session with no file yet (openSessionFiles.ts): 0%, labelled with
+ * its tab title, the IDE entrypoint so a click reveals its tab, no project
+ * (so no group, number or project colour), and the refresh time as
+ * lastUpdated so it sorts first.
+ */
+function toUnstartedSessionInfo(open: OpenSession, contextLimit: number, now: Date): SessionInfo {
+    return {
+        projectName: '',
+        projectPath: '',
+        sessionId: open.sessionId.substring(0, 8),
+        fullSessionId: open.sessionId,
+        entrypoint: CLAUDE_IDE_ENTRYPOINT,
+        lastPrompt: '',
+        aiTitle: '',
+        customTitle: open.title,
+        derivedPrompt: '',
+        sessionFile: '',
+        inputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        totalTokens: 0,
+        percentage: 0,
+        lastUpdated: now,
+        model: '',
+        contextLimit,
+        firstMessage: '',
+        sessionCreated: null,
+        wasCleared: false,
+        open: true
+    };
+}
+
 async function findActiveSessions(): Promise<SessionInfo[]> {
     const sessions: SessionInfo[] = [];
     const claudeDir = getClaudeProjectsDir();
@@ -810,6 +841,8 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
     // Each open session is shown however long it sat idle, wherever its file
     // lives, at 0% if it has no usage yet and even right after a /clear: the
     // tab state proves it is open, so none of the scan's guesses apply.
+    // One with no file yet was opened and never used: it is shown too.
+    const unstarted: SessionInfo[] = [];
     if (openSessions) {
         try {
             openSessionFileCache = resolveOpenSessionFiles(
@@ -818,7 +851,13 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
                 () => fs.readdirSync(claudeDir).map(d => path.join(claudeDir, d)),
                 fs.existsSync
             );
+            const now = new Date();
+            for (const open of openSessionsWithoutFile(openSessions, openSessionFileCache)) {
+                unstarted.push(toUnstartedSessionInfo(open, contextLimit, now));
+            }
         } catch (e) {
+            // Nothing is shown as unstarted here: a failed lookup says nothing
+            // about which sessions have a file.
             console.error('Error resolving open Claude Code sessions:', e);
             // The previous map may hold ids closed since: never reuse it.
             openSessionFileCache = new Map();
@@ -864,7 +903,8 @@ async function findActiveSessions(): Promise<SessionInfo[]> {
 
     // Grouping, supersession and numbering are one pure decision — see
     // sessionGroups.ts for why the key is the project PATH, not its name.
-    const finalSessions = groupAndNumberSessions(liveSessions);
+    // An unstarted session has no project, so it joins after grouping.
+    const finalSessions = [...groupAndNumberSessions(liveSessions), ...unstarted];
 
     // Sort by mtime for display order (most recent first)
     finalSessions.sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
@@ -937,7 +977,7 @@ async function refreshAllSessions() {
     if (autoColor) {
         // Auto mode: use pastel palette
         for (const session of sessions) {
-            if (!projectColorMap.has(session.projectName)) {
+            if (session.projectName && !projectColorMap.has(session.projectName)) {
                 projectColorMap.set(session.projectName, pastelPalette[colorIndex % pastelPalette.length]);
                 colorIndex++;
             }
@@ -946,7 +986,7 @@ async function refreshAllSessions() {
         // Manual mode: use variations of the base color
         const variations = baseColorVariations[baseColor] || baseColorVariations['White'];
         for (const session of sessions) {
-            if (!projectColorMap.has(session.projectName)) {
+            if (session.projectName && !projectColorMap.has(session.projectName)) {
                 projectColorMap.set(session.projectName, variations[colorIndex % variations.length]);
                 colorIndex++;
             }
@@ -954,27 +994,30 @@ async function refreshAllSessions() {
     }
 
     // Track which sessions we've seen
-    const seenPaths = new Set<string>();
+    const seenIds = new Set<string>();
 
     // Sessions are sorted newest-first, so reverse for oldest-left display
     // For Left alignment: higher priority = further left
     for (let i = 0; i < sessions.length; i++) {
         const session = sessions[i];
-        seenPaths.add(session.sessionFile);
+        seenIds.add(session.fullSessionId);
+        // No file yet: an open tab never used (toUnstartedSessionInfo).
+        const isUnstarted = session.sessionFile === '';
+        // It has no project, so its tab title stands in for the project name.
+        const unstartedTitle = session.customTitle || session.sessionId;
 
-        let entry = statusBarItems.get(session.sessionFile);
+        let item = statusBarItems.get(session.fullSessionId);
 
-        if (!entry) {
+        if (!item) {
             // Create new status bar item - Right align, very high priority to appear LEFT of Claude's items
             // Higher priority = further left on right-aligned items. Context items stack
             // above the usage item (STATUS_BAR_PRIORITY_BASE), so they sit to its left.
             const priority = STATUS_BAR_PRIORITY_BASE + (sessions.length - i);
-            const item = vscode.window.createStatusBarItem(
+            item = vscode.window.createStatusBarItem(
                 vscode.StatusBarAlignment.Right,
                 priority
             );
-            entry = { item, sessionFile: session.sessionFile };
-            statusBarItems.set(session.sessionFile, entry);
+            statusBarItems.set(session.fullSessionId, item);
         }
 
         // Update the status bar item with fuzzy emoji matching
@@ -988,54 +1031,54 @@ async function refreshAllSessions() {
             aiTitle: session.aiTitle,
             lastPrompt: session.lastPrompt,
             derivedPrompt: session.derivedPrompt,
-            fallbackName: projectLabel,
+            fallbackName: isUnstarted ? unstartedTitle : projectLabel,
             length: tabNameLength
         });
-        entry.item.text = `${icon}${iconSpace}${displayName}: ${session.percentage}%`;
+        item.text = `${icon}${iconSpace}${displayName}: ${session.percentage}%`;
 
         // Set background color based on thresholds
         if (session.percentage >= dangerThreshold) {
-            entry.item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+            item.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
         } else if (session.percentage >= warningThreshold) {
-            entry.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+            item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
         } else {
-            entry.item.backgroundColor = undefined;
+            item.backgroundColor = undefined;
         }
 
-        // Set text color from project color map
-        entry.item.color = projectColorMap.get(session.projectName) || '#ffffff';
+        // Set text color from project color map; no project → the theme's default colour.
+        item.color = isUnstarted ? undefined : projectColorMap.get(session.projectName) || '#ffffff';
 
         // Detailed tooltip with full token breakdown and first message
         const firstMsgLine = session.firstMessage ? `💬 *"${session.firstMessage}"*\n\n` : '';
-        entry.item.tooltip = new vscode.MarkdownString(
-            `**${session.projectName}** (${session.sessionId})\n\n` +
+        item.tooltip = new vscode.MarkdownString(
+            `**${isUnstarted ? unstartedTitle : session.projectName}** (${session.sessionId})\n\n` +
             firstMsgLine +
-            `📁 \`${session.projectPath}\`\n\n` +
+            (session.projectPath ? `📁 \`${session.projectPath}\`\n\n` : '') +
             `🤖 Model: \`${session.model || 'Unknown'}\`\n\n` +
             `📊 **Context Usage: ${session.percentage}%**\n\n` +
             `| Type | Tokens |\n|------|--------|\n` +
             `| Cache Read | ${formatTokens(session.cacheReadTokens)} |\n` +
             `| Cache Creation | ${formatTokens(session.cacheCreationTokens)} |\n` +
             `| **Total** | **${formatTokens(session.totalTokens)}** / ${formatTokens(session.contextLimit)} |\n\n` +
-            `🕐 Last updated: ${session.lastUpdated.toLocaleTimeString()}\n\n` +
+            `🕐 Last updated: ${isUnstarted ? '—' : session.lastUpdated.toLocaleTimeString()}\n\n` +
             `*Click to open this tab*`
         );
 
         // Click to open this session's Claude Code tab
-        entry.item.command = {
+        item.command = {
             command: 'claudeContextBar.revealSession',
             title: 'Open Claude Code Tab',
             arguments: [session.fullSessionId, session.entrypoint]
         };
 
-        entry.item.show();
+        item.show();
     }
 
     // Remove status bar items for sessions that are no longer active
-    for (const [sessionFile, entry] of statusBarItems) {
-        if (!seenPaths.has(sessionFile)) {
-            entry.item.dispose();
-            statusBarItems.delete(sessionFile);
+    for (const [sessionId, item] of statusBarItems) {
+        if (!seenIds.has(sessionId)) {
+            item.dispose();
+            statusBarItems.delete(sessionId);
         }
     }
 

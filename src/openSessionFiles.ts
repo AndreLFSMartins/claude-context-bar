@@ -8,7 +8,11 @@
  * see issue #5). The tab state already proves the session belongs to this
  * window, so each open id is looked up as `<dir>/<id>.jsonl` across EVERY
  * directory under ~/.claude/projects, and the id → path answer is reused on
- * the next refresh. An id with no file yet is left out here (issue #9).
+ * the next refresh. An id with no file yet is a tab opened and never used:
+ * Claude Code writes the `.jsonl` only with the first message (a never-used
+ * tab, id `d5a6f0af…`, had none, 2026-10-04). It is still an open session,
+ * so `openSessionsWithoutFile` hands it back to be shown at 0% under its tab
+ * title (issue #9).
  *
  * With the open set known, an IDE session that is not in it is dropped
  * anyway, so the directory scan does not need to parse its file to find that
@@ -24,6 +28,7 @@
 
 import * as path from 'path';
 import { CLAUDE_IDE_ENTRYPOINT } from './revealSession';
+import type { OpenSession } from './claudeTabState';
 
 /** How much of a session file's head the scan reads for its entrypoint. */
 export const HEAD_BYTES = 64 * 1024;
@@ -61,6 +66,17 @@ export function resolveOpenSessionFiles(
         }
     }
     return resolved;
+}
+
+/**
+ * The open sessions `resolveOpenSessionFiles` found no file for, in tab-state
+ * order: tabs opened and never used.
+ */
+export function openSessionsWithoutFile(
+    open: readonly OpenSession[],
+    resolved: ReadonlyMap<string, string>
+): OpenSession[] {
+    return open.filter((s) => !resolved.has(s.sessionId));
 }
 
 /**
