@@ -2,6 +2,22 @@
 
 All notable changes to the Claude Context Bar extension will be documented in this file.
 
+## [1.11.0] - 2026-10-05
+
+### Added
+- **A tab opened and never used shows on the bar at 0% under its tab title.** Claude Code
+  writes a session's `.jsonl` only with its first message, so a new tab had no file and no
+  bar item. Whenever this window's tab state is readable, an open session with no file now
+  gets one: labelled with the tab state `title`, no project group or number, the theme's
+  default colour, "Last updated: —" in the tooltip, sorted first, and a click reveals its tab.
+- Bar items are keyed by the full session id instead of the session file path, so that item
+  updates in place when the first message writes the file instead of being replaced.
+
+This completes issue #5 (1.9.0, 1.10.0, 1.11.0): with the tab state readable, the bar shows
+exactly this window's open Claude Code tabs, by session id, however long they sit idle, and
+`idleTimeout` applies only to sessions outside VS Code tabs. With it unknown, or
+`onlyCurrentWindow` off, the 1.8.5 pipeline runs unchanged.
+
 ## [1.10.0] - 2026-10-04
 
 ### Fixed

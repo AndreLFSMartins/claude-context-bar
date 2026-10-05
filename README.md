@@ -95,7 +95,8 @@ set both secrets first and confirm the `andremartins` publisher exists.
   tab, so it is never evicted for lacking one.
 - Keeps a session on the bar for as long as its Claude Code tab is open, however long it sits
   idle, wherever its session file lives, and at 0% before its first reply or right after a
-  `/clear`. This needs the tab state; `idleTimeout` then applies only to sessions outside VS
+  `/clear`. A tab opened and never used, which has no session file yet, shows at 0% under its
+  tab title. This needs the tab state; `idleTimeout` then applies only to sessions outside VS
   Code tabs.
 - Labels each item with the session's own text (the name from `/rename`, else the AI title,
   else the last prompt), not the project name.
